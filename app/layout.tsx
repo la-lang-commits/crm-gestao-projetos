@@ -3,10 +3,11 @@ import "./globals.css";
 import "./theme.css";
 import "./workflow.css";
 import "./dialog-fix.css";
+import "./settings.css";
 
 export const metadata: Metadata = {
   title: "CRM — Gestão de Projetos",
-  description: "Acompanhamento de projetos e relatórios com acesso isolado por grupos.",
+  description: "Acompanhamento de projetos e relatórios com acesso isolado por áreas.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
