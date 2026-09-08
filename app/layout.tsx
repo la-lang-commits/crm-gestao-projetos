@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./theme.css";
+import "./workflow.css";
 
 export const metadata: Metadata = {
   title: "CRM — Gestão de Projetos",
