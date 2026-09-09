@@ -1041,6 +1041,9 @@ function Workspace({ user }: { user: any }) {
           uploadAttachment={uploadAttachment}
           downloadAttachment={downloadAttachment}
           removeAttachment={removeAttachment}
+          canDeleteAttachment={(attachment) =>
+            attachment.uploadedBy === user.id || role !== "member"
+          }
         />
       )}
     </div>
@@ -1519,6 +1522,7 @@ type ProjectDetailProps = {
   uploadAttachment: (project: Project, file: File) => Promise<void>;
   downloadAttachment: (attachment: Attachment) => Promise<void>;
   removeAttachment: (attachment: Attachment) => Promise<void>;
+  canDeleteAttachment: (attachment: Attachment) => boolean;
 };
 
 function ProjectDetail({
@@ -1541,6 +1545,7 @@ function ProjectDetail({
   uploadAttachment,
   downloadAttachment,
   removeAttachment,
+  canDeleteAttachment,
 }: ProjectDetailProps) {
   const show = (key: string) => fields.some((field) => field.key === key && field.visible);
   const sla = slaInfo(project);
@@ -1860,12 +1865,14 @@ function ProjectDetail({
                         catch (error: any) { setQuickError(error.message || "Não foi possível baixar o anexo."); }
                         finally { setAttachmentBusy(""); }
                       }}>{attachmentBusy === attachment.id ? <Loader2 /> : <Download />}</button>
-                      <button className="delete" title="Excluir anexo" disabled={!!attachmentBusy} onClick={async () => {
-                        setAttachmentBusy(attachment.id);
-                        try { await removeAttachment(attachment); }
-                        catch (error: any) { setQuickError(error.message || "Não foi possível excluir o anexo."); }
-                        finally { setAttachmentBusy(""); }
-                      }}><Trash2 /></button>
+                      {canDeleteAttachment(attachment) && (
+                        <button className="delete" title="Excluir anexo" disabled={!!attachmentBusy} onClick={async () => {
+                          setAttachmentBusy(attachment.id);
+                          try { await removeAttachment(attachment); }
+                          catch (error: any) { setQuickError(error.message || "Não foi possível excluir o anexo."); }
+                          finally { setAttachmentBusy(""); }
+                        }}><Trash2 /></button>
+                      )}
                     </article>
                   ))}
                 </div>
