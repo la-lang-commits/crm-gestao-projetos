@@ -21,10 +21,12 @@ import {
   LockKeyhole,
   LogOut,
   Menu,
+  MessageCircle,
   MoreHorizontal,
   Pencil,
   Plus,
   Search,
+  Send,
   Settings,
   ShieldCheck,
   Tag,
@@ -54,10 +56,15 @@ type Member = { id: string; name: string; role: string; areaId: string };
 type Label = { id: string; label_text: string; color: string };
 type Event = {
   id: string;
+  eventType: string;
   justification: string;
   created_at: string;
   actor?: { full_name: string };
   subject?: { full_name: string };
+  fromOwner?: { full_name: string };
+  toOwner?: { full_name: string };
+  fromStage?: string;
+  toStage?: string;
 };
 type CatalogItem = {
   id: string;
@@ -193,6 +200,26 @@ const slaInfo = (p: Project) => {
     return { label: "Projeto atrasado · etapa anterior", tone: "late" };
   return deadlineInfo(p.slaDueAt);
 };
+const eventTitle = (event: Event) => {
+  switch (event.eventType) {
+    case "projeto_criado":
+      return event.toOwner?.full_name
+        ? `Ticket criado para ${event.toOwner.full_name}`
+        : "Ticket criado";
+    case "etiqueta_adicionada":
+      return "Etiqueta adicionada";
+    case "etiqueta_removida":
+      return "Etiqueta removida";
+    case "transferencia":
+      return `${event.fromOwner?.full_name || "Responsável anterior"} passou o processo para ${event.toOwner?.full_name || "o próximo responsável"}`;
+    case "etapa_concluida":
+      return "Etapa concluída e projeto finalizado";
+    case "comentario":
+      return "Comentário";
+    default:
+      return "Projeto atualizado";
+  }
+};
 export default function Home() {
   const [session, setSession] = useState<any>(null),
     [ready, setReady] = useState(false);
@@ -327,7 +354,8 @@ function Workspace({ user }: { user: any }) {
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [labelProject, setLabelProject] = useState(""),
-    [labelText, setLabelText] = useState("");
+    [labelText, setLabelText] = useState(""),
+    [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   async function load() {
     setLoading(true);
     setError("");
@@ -346,7 +374,7 @@ function Workspace({ user }: { user: any }) {
       supabase
         .from("projects")
         .select(
-          "id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,sla_days,sla_value,sla_unit,sla_due_at,has_delayed_step,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),workflow:project_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,status,started_at,due_at,completed_at,completed_late,assignee:profiles!project_workflow_steps_assignee_id_fkey(full_name)),labels:project_labels(id,label_text,color),events:project_events(id,justification,created_at,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),custom_values:project_field_values(field_id,value)",
+          "id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,sla_days,sla_value,sla_unit,sla_due_at,has_delayed_step,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),workflow:project_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,status,started_at,due_at,completed_at,completed_late,assignee:profiles!project_workflow_steps_assignee_id_fkey(full_name)),labels:project_labels(id,label_text,color),events:project_events(id,event_type,justification,created_at,from_stage,to_stage,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),from_owner:profiles!project_events_from_owner_id_fkey(full_name),to_owner:profiles!project_events_to_owner_id_fkey(full_name)),custom_values:project_field_values(field_id,value)",
         )
         .order("updated_at", { ascending: false }),
       supabase
@@ -469,11 +497,24 @@ function Workspace({ user }: { user: any }) {
           observation: p.observation || "",
           progress: p.progress,
           labels: p.labels || [],
-          events: (p.events || []).sort(
-            (a: Event, b: Event) =>
-              new Date(b.created_at).getTime() -
-              new Date(a.created_at).getTime(),
-          ),
+          events: (p.events || [])
+            .map((event: any) => ({
+              id: event.id,
+              eventType: event.event_type,
+              justification: event.justification,
+              created_at: event.created_at,
+              actor: event.actor,
+              subject: event.subject,
+              fromOwner: event.from_owner,
+              toOwner: event.to_owner,
+              fromStage: event.from_stage,
+              toStage: event.to_stage,
+            }))
+            .sort(
+              (a: Event, b: Event) =>
+                new Date(b.created_at).getTime() -
+                new Date(a.created_at).getTime(),
+            ),
           customValues: p.custom_values || [],
         })),
       );
@@ -553,10 +594,9 @@ function Workspace({ user }: { user: any }) {
   }
   async function addLabel(projectId: string) {
     if (!labelText.trim()) return;
-    const { error } = await supabase.from("project_labels").insert({
-      project_id: projectId,
-      label_text: labelText.trim(),
-      color: "#e3ece7",
+    const { error } = await supabase.rpc("add_project_label_with_event", {
+      p_project_id: projectId,
+      p_label_text: labelText.trim(),
     });
     if (error) {
       setError(error.message);
@@ -564,6 +604,28 @@ function Workspace({ user }: { user: any }) {
     }
     setLabelText("");
     setLabelProject("");
+    setNotice("Etiqueta adicionada e registrada no histórico.");
+    await load();
+  }
+  async function removeLabel(labelId: string) {
+    const { error } = await supabase.rpc("remove_project_label_with_event", {
+      p_label_id: labelId,
+    });
+    if (error) return setError(error.message);
+    setNotice("Etiqueta removida e registrada no histórico.");
+    await load();
+  }
+  async function addComment(projectId: string) {
+    const comment = commentDrafts[projectId]?.trim();
+    if (!comment) return;
+    const { error } = await supabase.rpc("add_project_comment", {
+      p_project_id: projectId,
+      p_comment: comment,
+      p_subject_user_id: null,
+    });
+    if (error) return setError(error.message);
+    setCommentDrafts((drafts) => ({ ...drafts, [projectId]: "" }));
+    setNotice("Comentário registrado no histórico.");
     await load();
   }
   return (
@@ -753,6 +815,10 @@ function Workspace({ user }: { user: any }) {
               labelText={labelText}
               setLabelText={setLabelText}
               addLabel={addLabel}
+              removeLabel={removeLabel}
+              commentDrafts={commentDrafts}
+              setCommentDrafts={setCommentDrafts}
+              addComment={addComment}
             />
           )}
         </div>
@@ -944,6 +1010,12 @@ type ListProps = {
   labelText?: string;
   setLabelText?: (v: string) => void;
   addLabel?: (id: string) => void;
+  removeLabel?: (id: string) => void;
+  commentDrafts?: Record<string, string>;
+  setCommentDrafts?: React.Dispatch<
+    React.SetStateAction<Record<string, string>>
+  >;
+  addComment?: (id: string) => void;
 };
 function ProjectsView(
   props: ListProps & {
@@ -1023,6 +1095,10 @@ function TicketCards({
   labelText,
   setLabelText,
   addLabel,
+  removeLabel,
+  commentDrafts,
+  setCommentDrafts,
+  addComment,
   compact = false,
 }: ListProps & { compact?: boolean }) {
   const show = (key: string) => fields.some((f) => f.key === key && f.visible);
@@ -1035,7 +1111,7 @@ function TicketCards({
             stepSla = currentStep
               ? deadlineInfo(currentStep.dueAt)
               : { label: "Sem etapa ativa", tone: "neutral" },
-            latest = p.events[0],
+            currentStepLate = stepSla.tone === "late",
             custom = p.customValues
               .map((v) => ({
                 value: v.value,
@@ -1160,6 +1236,13 @@ function TicketCards({
                           <span key={l.id}>
                             <Tag />
                             {l.label_text}
+                            <button
+                              title={`Remover etiqueta ${l.label_text}`}
+                              aria-label={`Remover etiqueta ${l.label_text}`}
+                              onClick={() => removeLabel?.(l.id)}
+                            >
+                              <X />
+                            </button>
                           </span>
                         ))}
                         {!p.labels.length && <small>Sem etiquetas</small>}
@@ -1197,23 +1280,86 @@ function TicketCards({
                       {p.observation}
                     </div>
                   )}
-                  {latest && (
-                    <div className="latest-note">
-                      <span>Última justificativa</span>
-                      <p>“{latest.justification}”</p>
-                      <small>
-                        {latest.subject?.full_name &&
-                        latest.subject.full_name !== latest.actor?.full_name
-                          ? "Referente a " + latest.subject.full_name + " · "
-                          : ""}
-                        Registrado por{" "}
-                        <b>{latest.actor?.full_name || "Usuário"}</b> em{" "}
-                        {new Date(latest.created_at).toLocaleDateString(
-                          "pt-BR",
-                        )}
-                      </small>
+                  <section className="activity-panel">
+                    <header>
+                      <div>
+                        <MessageCircle />
+                        <b>Comentários e histórico</b>
+                      </div>
+                      <small>{p.events.length} registros</small>
+                    </header>
+                    {currentStepLate && (
+                      <div className="late-comment-warning">
+                        <Clock3 />
+                        Esta etapa está atrasada. Registre a justificativa do
+                        atraso abaixo.
+                      </div>
+                    )}
+                    <div className="comment-composer">
+                      <textarea
+                        value={commentDrafts?.[p.id] || ""}
+                        onChange={(event) =>
+                          setCommentDrafts?.((drafts) => ({
+                            ...drafts,
+                            [p.id]: event.target.value,
+                          }))
+                        }
+                        maxLength={2000}
+                        placeholder={
+                          currentStepLate
+                            ? "Justifique o atraso desta etapa..."
+                            : "Adicione um comentário ao ticket..."
+                        }
+                      />
+                      <button
+                        onClick={() => addComment?.(p.id)}
+                        disabled={(commentDrafts?.[p.id]?.trim().length || 0) < 3}
+                      >
+                        <Send />
+                        Comentar
+                      </button>
                     </div>
-                  )}
+                    {p.events.length ? (
+                      <div className="activity-list">
+                        {p.events.slice(0, 8).map((event) => (
+                          <article className="activity-item" key={event.id}>
+                            <i>
+                              {event.eventType === "comentario" ? (
+                                <MessageCircle />
+                              ) : (
+                                <Activity />
+                              )}
+                            </i>
+                            <div>
+                              <b>{eventTitle(event)}</b>
+                              <p>{event.justification}</p>
+                              <small>
+                                {event.subject?.full_name &&
+                                event.subject.full_name !==
+                                  event.actor?.full_name
+                                  ? `Referente a ${event.subject.full_name} · `
+                                  : ""}
+                                Registrado por{" "}
+                                <strong>
+                                  {event.actor?.full_name || "Usuário"}
+                                </strong>{" "}
+                                em{" "}
+                                {new Date(event.created_at).toLocaleString(
+                                  "pt-BR",
+                                  { dateStyle: "short", timeStyle: "short" },
+                                )}
+                              </small>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="activity-empty">
+                        O histórico deste ticket começa com o primeiro
+                        comentário ou alteração.
+                      </p>
+                    )}
+                  </section>
                 </>
               )}
             </article>
