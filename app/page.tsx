@@ -116,6 +116,7 @@ type Project = {
   status: Status;
   priority: Priority;
   openedAt: string;
+  updatedAt: string;
   slaDays: number;
   slaValue: number;
   slaUnit: SlaUnit;
@@ -189,6 +190,17 @@ const deadlineInfo = (dueAt: string | null) => {
     label: `${Math.ceil(hours / 24)}d restantes`,
     tone: hours <= 72 ? "warning" : "ok",
   };
+};
+const timeInCurrentStep = (project: Project) => {
+  const currentStep = project.workflow.find((step) => step.status === "current");
+  const startedAt = currentStep?.startedAt;
+  if (!startedAt) return "—";
+  const days = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(startedAt).getTime()) / 86400000),
+  );
+  if (days === 0) return "Hoje nesta etapa";
+  return `${days} ${days === 1 ? "dia" : "dias"} nesta etapa`;
 };
 const slaInfo = (p: Project) => {
   if (["Concluído", "Cancelado"].includes(p.status))
@@ -375,7 +387,7 @@ function Workspace({ user }: { user: any }) {
       supabase
         .from("projects")
         .select(
-          "id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,sla_days,sla_value,sla_unit,sla_due_at,has_delayed_step,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),workflow:project_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,status,started_at,due_at,completed_at,completed_late,assignee:profiles!project_workflow_steps_assignee_id_fkey(full_name)),labels:project_labels(id,label_text,color),events:project_events(id,event_type,justification,created_at,from_stage,to_stage,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),from_owner:profiles!project_events_from_owner_id_fkey(full_name),to_owner:profiles!project_events_to_owner_id_fkey(full_name)),custom_values:project_field_values(field_id,value)",
+          "id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,updated_at,sla_days,sla_value,sla_unit,sla_due_at,has_delayed_step,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),workflow:project_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,status,started_at,due_at,completed_at,completed_late,assignee:profiles!project_workflow_steps_assignee_id_fkey(full_name)),labels:project_labels(id,label_text,color),events:project_events(id,event_type,justification,created_at,from_stage,to_stage,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),from_owner:profiles!project_events_from_owner_id_fkey(full_name),to_owner:profiles!project_events_to_owner_id_fkey(full_name)),custom_values:project_field_values(field_id,value)",
         )
         .order("updated_at", { ascending: false }),
       supabase
@@ -469,6 +481,7 @@ function Workspace({ user }: { user: any }) {
           status: p.status,
           priority: p.priority,
           openedAt: p.opened_at,
+          updatedAt: p.updated_at,
           slaDays: p.sla_days,
           slaValue: p.sla_value,
           slaUnit: p.sla_unit,
@@ -1055,8 +1068,111 @@ function ProjectsView(
           </button>
         </div>
       </header>
-      {mode === "list" ? <TicketCards {...rest} /> : <Kanban {...rest} />}
+      {mode === "list" ? <ProjectTable {...rest} /> : <Kanban {...rest} />}
     </section>
+  );
+}
+
+function ProjectTable({ projects, openProject }: ListProps) {
+  return (
+    <div className="project-table-wrap">
+      <div className="project-table">
+        <div className="project-table-head">
+          <span>Projeto</span>
+          <span>Etapas</span>
+          <span>Status</span>
+          <span>Última atualização</span>
+          <span>Responsável</span>
+          <span>Prioridade</span>
+          <span aria-hidden="true">•••</span>
+        </div>
+        {projects.length ? (
+          projects.map((project) => {
+            const flow = project.workflow.length
+              ? project.workflow
+              : stages.map((stageName, order) => ({
+                  id: stageName,
+                  stageName,
+                  order,
+                  status:
+                    order <= stages.indexOf(project.stage)
+                      ? "completed"
+                      : "pending",
+                  completedLate: false,
+                }));
+            return (
+              <article
+                className="project-table-row"
+                key={project.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => openProject?.(project)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    openProject?.(project);
+                  }
+                }}
+              >
+                <div className="project-cell-name">
+                  <b>{project.name}</b>
+                  <small>{ticket(project.ticket)}{project.sei ? ` · SEI ${project.sei}` : ""}</small>
+                  <p>{project.demand}</p>
+                </div>
+                <div className="table-stage-flow">
+                  {flow.map((step, index) => (
+                    <div
+                      className={`${step.status === "current" || step.status === "completed" ? "active" : ""} ${step.status === "current" ? "current" : ""} ${step.completedLate ? "late-step" : ""}`}
+                      key={step.id}
+                      title={step.stageName}
+                    >
+                      <i>{step.status === "completed" ? "✓" : ""}</i>
+                      {index < flow.length - 1 && <span />}
+                      <small>{step.stageName}</small>
+                    </div>
+                  ))}
+                </div>
+                <div className="table-status">
+                  <span className={`pill ${statusConfig[project.status].className}`}>
+                    {project.status}
+                  </span>
+                  <small>{timeInCurrentStep(project)}</small>
+                </div>
+                <time>
+                  {new Date(project.updatedAt).toLocaleDateString("pt-BR")}
+                </time>
+                <div className="table-owner">
+                  <i>{initials(project.owner)}</i>
+                  <span>{project.owner}</span>
+                </div>
+                <span className={`priority-pill ${project.priority.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")}`}>
+                  {project.priority}
+                </span>
+                <button
+                  className="table-more"
+                  title="Abrir processo"
+                  aria-label={`Abrir processo ${project.name}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    openProject?.(project);
+                  }}
+                >
+                  <MoreHorizontal />
+                </button>
+              </article>
+            );
+          })
+        ) : (
+          <div className="empty-projects">Nenhum projeto nesta área.</div>
+        )}
+      </div>
+      {projects.length > 0 && (
+        <footer className="project-table-footer">
+          <span>Mostrando {projects.length} {projects.length === 1 ? "projeto" : "projetos"}</span>
+          <div><button disabled>‹</button><b>1</b><button disabled>›</button></div>
+        </footer>
+      )}
+    </div>
   );
 }
 function Kanban({ projects, openProject }: ListProps) {
