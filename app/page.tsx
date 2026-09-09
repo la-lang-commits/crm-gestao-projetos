@@ -52,7 +52,8 @@ type Status =
 type Priority = "Alta" | "Média" | "Baixa";
 type SlaUnit = "business_days" | "calendar_days" | "hours" | "months";
 type Area = { id: string; name: string; color: string };
-type Member = { id: string; name: string; role: string; areaId: string };
+type Member = { id: string; name: string; email?: string; role: string; areaId: string };
+type ProfileOption = { id: string; name: string; email: string };
 type Label = { id: string; label_text: string; color: string };
 type Event = {
   id: string;
@@ -106,6 +107,7 @@ type FieldDef = {
 };
 type Project = {
   id: string;
+  catalogId: string;
   ticket: number;
   sei: string;
   name: string;
@@ -352,6 +354,7 @@ function Workspace({ user }: { user: any }) {
     [areas, setAreas] = useState<Area[]>([]),
     [areaId, setAreaId] = useState(""),
     [members, setMembers] = useState<Member[]>([]),
+    [profiles, setProfiles] = useState<ProfileOption[]>([]),
     [allProjects, setAllProjects] = useState<Project[]>([]),
     [catalog, setCatalog] = useState<CatalogItem[]>([]),
     [fields, setFields] = useState<FieldDef[]>([]),
@@ -372,7 +375,7 @@ function Workspace({ user }: { user: any }) {
   async function load() {
     setLoading(true);
     setError("");
-    const [pr, ar, mr, jr, cr, fr] = await Promise.all([
+    const [pr, ar, mr, jr, cr, fr, ur] = await Promise.all([
       supabase
         .from("profiles")
         .select("full_name,platform_role")
@@ -382,12 +385,12 @@ function Workspace({ user }: { user: any }) {
       supabase
         .from("group_members")
         .select(
-          "group_id,role,user_id,profile:profiles!group_members_user_id_fkey(id,full_name)",
+          "group_id,role,user_id,profile:profiles!group_members_user_id_fkey(id,full_name,email)",
         ),
       supabase
         .from("projects")
         .select(
-          "id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,updated_at,sla_days,sla_value,sla_unit,sla_due_at,has_delayed_step,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),workflow:project_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,status,started_at,due_at,completed_at,completed_late,assignee:profiles!project_workflow_steps_assignee_id_fkey(full_name)),labels:project_labels(id,label_text,color),events:project_events(id,event_type,justification,created_at,from_stage,to_stage,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),from_owner:profiles!project_events_from_owner_id_fkey(full_name),to_owner:profiles!project_events_to_owner_id_fkey(full_name)),custom_values:project_field_values(field_id,value)",
+          "id,catalog_id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,updated_at,sla_days,sla_value,sla_unit,sla_due_at,has_delayed_step,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),workflow:project_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,status,started_at,due_at,completed_at,completed_late,assignee:profiles!project_workflow_steps_assignee_id_fkey(full_name)),labels:project_labels(id,label_text,color),events:project_events(id,event_type,justification,created_at,from_stage,to_stage,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),from_owner:profiles!project_events_from_owner_id_fkey(full_name),to_owner:profiles!project_events_to_owner_id_fkey(full_name)),custom_values:project_field_values(field_id,value)",
         )
         .order("updated_at", { ascending: false }),
       supabase
@@ -402,6 +405,7 @@ function Workspace({ user }: { user: any }) {
           "id,area_id,field_key,label,field_type,required,visible,is_system,sort_order",
         )
         .order("sort_order"),
+      supabase.from("profiles").select("id,email,full_name").order("full_name"),
     ]);
     if (pr.data) {
       setName(pr.data.full_name || user.email);
@@ -423,8 +427,16 @@ function Workspace({ user }: { user: any }) {
       (mr.data || []).map((m: any) => ({
         id: m.user_id,
         name: m.profile?.full_name || "Usuário",
+        email: m.profile?.email || "",
         role: m.role,
         areaId: m.group_id,
+      })),
+    );
+    setProfiles(
+      (ur.data || []).map((profile: any) => ({
+        id: profile.id,
+        name: profile.full_name || profile.email,
+        email: profile.email,
       })),
     );
     setCatalog(
@@ -471,6 +483,7 @@ function Workspace({ user }: { user: any }) {
     else {
       const mappedProjects: Project[] = (jr.data || []).map((p: any) => ({
           id: p.id,
+          catalogId: p.catalog_id || "",
           ticket: Number(p.ticket_number),
           sei: p.sei_number || "",
           name: p.name,
@@ -594,11 +607,17 @@ function Workspace({ user }: { user: any }) {
           p_justification: v.justification,
           p_subject_user_id: v.subjectId || null,
         })
-      : await supabase.rpc("update_project_with_justification", {
+      : await supabase.rpc("update_project_details_with_justification", {
           p_project_id: v.id,
+          p_catalog_id: v.catalogId,
+          p_sei_number: v.sei || null,
+          p_opened_at: v.openedAt,
           p_status: v.status,
           p_stage: v.stage,
           p_owner_id: v.ownerId || null,
+          p_observation: v.observation || null,
+          p_priority: v.priority,
+          p_custom_values: v.custom,
           p_justification: v.justification,
           p_subject_user_id: v.subjectId || null,
         });
@@ -694,7 +713,7 @@ function Workspace({ user }: { user: any }) {
         </div>
         {role === "super" && (
           <button className="manage" onClick={() => setView("Configurações")}>
-            <Building2 /> Gerenciar áreas
+            <Building2 /> Áreas e acessos
           </button>
         )}
         <div className="aside-foot">
@@ -803,6 +822,8 @@ function Workspace({ user }: { user: any }) {
               areas={areas}
               catalog={areaCatalog}
               members={areaMembers}
+              accessMembers={scopedMembers}
+              profiles={profiles}
               fields={areaFields}
               reload={load}
               message={setNotice}
@@ -837,6 +858,8 @@ function Workspace({ user }: { user: any }) {
         <EditProject
           project={editProject}
           members={areaMembers}
+          catalog={areaCatalog}
+          fields={areaFields}
           role={role}
           open={!!editProject}
           setOpen={(v) => !v && setEditProject(null)}
@@ -1423,15 +1446,22 @@ function ProjectDetail({
             </section>
 
             <section className="process-section">
-              <h3>Dados do processo</h3>
+              <div className="section-title-row">
+                <div>
+                  <h3>Informações do ticket</h3>
+                  <p>Confira tudo o que foi preenchido na abertura.</p>
+                </div>
+                <button onClick={() => edit(project)}><Pencil /> Corrigir informações</button>
+              </div>
               <div className="process-fields">
+                <div><b>Nº do ticket</b><span>{ticket(project.ticket)}</span></div>
+                <div><b>Nº do SEI</b><span>{project.sei || "Não informado"}</span></div>
+                <div><b>Projeto</b><span>{project.name}</span></div>
+                <div><b>Demanda</b><span>{project.demand}</span></div>
                 {show("openedAt") && (
                   <div><b>Data de abertura</b><span>{new Date(project.openedAt + "T12:00:00").toLocaleDateString("pt-BR")}</span></div>
                 )}
-                <div><b>SLA do projeto</b><span className={sla.tone}>{sla.label}</span><small>{formatSla(project.slaValue, project.slaUnit)}</small></div>
-                {currentStep && (
-                  <div><b>SLA da etapa atual</b><span className={stepSla.tone}>{stepSla.label}</span><small>{currentStep.assignee}</small></div>
-                )}
+                <div><b>Status</b><span>{project.status}</span></div>
                 {show("ownerId") && <div><b>Responsável</b><span>{project.owner}</span></div>}
                 {show("stage") && <div><b>Etapa</b><span>{project.stage}</span></div>}
                 <div><b>Prioridade</b><span>{project.priority}</span></div>
@@ -1439,6 +1469,40 @@ function ProjectDetail({
                   <div key={item.field!.id}><b>{item.field!.label}</b><span>{item.value || "—"}</span></div>
                 ))}
               </div>
+            </section>
+
+            <section className="process-section">
+              <div className="section-title-row">
+                <div>
+                  <h3>SLAs e responsáveis</h3>
+                  <p>Prazos configurados para o projeto e para cada etapa.</p>
+                </div>
+                <span className={`sla-summary ${sla.tone}`}>{sla.label}</span>
+              </div>
+              <div className="project-sla-total">
+                <div><Clock3 /><span><small>SLA total do projeto e da demanda</small><b>{formatSla(project.slaValue, project.slaUnit)}</b></span></div>
+                <strong className={sla.tone}>{sla.label}</strong>
+              </div>
+              {project.workflow.length ? (
+                <div className="sla-step-list">
+                  {project.workflow.map((step) => {
+                    const deadline = deadlineInfo(step.dueAt);
+                    const state = step.status === "completed"
+                      ? step.completedLate ? "Concluída com atraso" : "Concluída no prazo"
+                      : step.status === "current" ? "Etapa atual" : "Aguardando início";
+                    return (
+                      <article className={step.status === "current" ? "current" : ""} key={step.id}>
+                        <i>{step.order}</i>
+                        <div><b>{step.stageName}</b><span>{step.assignee}</span></div>
+                        <div><small>SLA da etapa</small><strong>{formatSla(step.slaValue, step.slaUnit)}</strong></div>
+                        <div><small>Situação</small><strong className={step.completedLate ? "late" : deadline.tone}>{state}{step.status === "current" ? ` · ${deadline.label}` : ""}</strong></div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="process-observation">Nenhum fluxo por responsável foi configurado para este projeto.</p>
+              )}
               {project.hasDelayedStep && currentStep && stepSla.tone !== "late" && (
                 <div className="sla-history-note">
                   <Clock3 />
@@ -1918,6 +1982,8 @@ function LegacyConfiguration({
   areas,
   catalog,
   members,
+  accessMembers,
+  profiles,
   fields,
   reload,
   message,
@@ -1929,6 +1995,8 @@ function LegacyConfiguration({
   areas: Area[];
   catalog: CatalogItem[];
   members: Member[];
+  accessMembers: Member[];
+  profiles: ProfileOption[];
   fields: FieldDef[];
   reload: () => Promise<void>;
   message: (x: string) => void;
@@ -1943,6 +2011,8 @@ function LegacyConfiguration({
     [fieldLabel, setFieldLabel] = useState(""),
     [fieldType, setFieldType] = useState<FieldDef["type"]>("text"),
     [areaName, setAreaName] = useState(""),
+    [accessUserId, setAccessUserId] = useState(""),
+    [accessRole, setAccessRole] = useState<"admin" | "member">("member"),
     [busy, setBusy] = useState(false);
   async function run(action: () => PromiseLike<{ error: any }>, ok: string) {
     setBusy(true);
@@ -2002,6 +2072,17 @@ function LegacyConfiguration({
     );
     setAreaName("");
   }
+  async function addAccess() {
+    if (!areaId || !accessUserId) return fail("Selecione um usuário para liberar o acesso.");
+    await run(
+      () => supabase.from("group_members").upsert(
+        { group_id: areaId, user_id: accessUserId, role: accessRole },
+        { onConflict: "group_id,user_id" },
+      ),
+      "Acesso à área atualizado.",
+    );
+    setAccessUserId("");
+  }
   if (role === "member")
     return (
       <div className="settings-denied">
@@ -2033,7 +2114,7 @@ function LegacyConfiguration({
             className={tab === "areas" ? "active" : ""}
             onClick={() => setTab("areas")}
           >
-            Áreas
+            Áreas e acessos
           </button>
         )}
       </div>
@@ -2256,13 +2337,67 @@ function LegacyConfiguration({
               </div>
             ))}
           </div>
+          <div className="access-manager">
+            <header>
+              <div>
+                <h3>Acessos da área selecionada</h3>
+                <p>Libere perfis para testar a visão de Admin ou Membro em {areas.find((area) => area.id === areaId)?.name || "esta área"}.</p>
+              </div>
+              <span>{accessMembers.length} {accessMembers.length === 1 ? "acesso" : "acessos"}</span>
+            </header>
+            <div className="access-form">
+              <label>
+                Usuário cadastrado
+                <select value={accessUserId} onChange={(event) => setAccessUserId(event.target.value)}>
+                  <option value="">Selecione um usuário</option>
+                  {profiles
+                    .filter((profile) => !accessMembers.some((member) => member.id === profile.id))
+                    .map((profile) => <option value={profile.id} key={profile.id}>{profile.name} — {profile.email}</option>)}
+                </select>
+              </label>
+              <label>
+                Perfil de acesso
+                <select value={accessRole} onChange={(event) => setAccessRole(event.target.value as "admin" | "member")}>
+                  <option value="member">Membro</option>
+                  <option value="admin">Admin da área</option>
+                </select>
+              </label>
+              <button className="primary" disabled={busy || !accessUserId} onClick={addAccess}><Plus /> Liberar acesso</button>
+            </div>
+            <div className="access-list">
+              {accessMembers.map((member) => (
+                <div className="access-row" key={member.id}>
+                  <i>{initials(member.name)}</i>
+                  <div><b>{member.name}</b><small>{member.email || "Usuário cadastrado"}</small></div>
+                  <select
+                    value={member.role}
+                    onChange={(event) => run(
+                      () => supabase.from("group_members").update({ role: event.target.value }).eq("group_id", areaId).eq("user_id", member.id),
+                      "Perfil de acesso atualizado.",
+                    )}
+                  >
+                    <option value="member">Membro</option>
+                    <option value="admin">Admin da área</option>
+                  </select>
+                  <button
+                    title={`Remover acesso de ${member.name}`}
+                    onClick={() => run(
+                      () => supabase.from("group_members").delete().eq("group_id", areaId).eq("user_id", member.id),
+                      "Acesso removido.",
+                    )}
+                  ><Trash2 /></button>
+                </div>
+              ))}
+              {!accessMembers.length && <div className="config-empty">Nenhum acesso específico nesta área.</div>}
+            </div>
+          </div>
         </div>
       )}
       {tab === "areas" && role === "super" && (
         <div className="settings-card">
           <header>
             <div>
-              <h2>Áreas</h2>
+              <h2>Áreas e acessos</h2>
               <p>
                 Cadastre Secretarias, Coordenadorias ou demais áreas com dados
                 isolados.
@@ -2315,6 +2450,8 @@ function Configuration({
   areas,
   catalog,
   members,
+  accessMembers,
+  profiles,
   fields,
   reload,
   message,
@@ -2326,6 +2463,8 @@ function Configuration({
   areas: Area[];
   catalog: CatalogItem[];
   members: Member[];
+  accessMembers: Member[];
+  profiles: ProfileOption[];
   fields: FieldDef[];
   reload: () => Promise<void>;
   message: (x: string) => void;
@@ -2339,6 +2478,8 @@ function Configuration({
   const [fieldLabel, setFieldLabel] = useState("");
   const [fieldType, setFieldType] = useState<FieldDef["type"]>("text");
   const [areaName, setAreaName] = useState("");
+  const [accessUserId, setAccessUserId] = useState("");
+  const [accessRole, setAccessRole] = useState<"admin" | "member">("member");
   const [busy, setBusy] = useState(false);
   const [editCatalog, setEditCatalog] = useState<CatalogItem | null>(null);
   const [workflowCatalogId, setWorkflowCatalogId] = useState("");
@@ -2460,6 +2601,19 @@ function Configuration({
     if (ok) setAreaName("");
   }
 
+  async function addAccess() {
+    if (!areaId || !accessUserId) return fail("Selecione um usuário para liberar o acesso.");
+    const ok = await run(
+      () =>
+        supabase.from("group_members").upsert(
+          { group_id: areaId, user_id: accessUserId, role: accessRole },
+          { onConflict: "group_id,user_id" },
+        ),
+      "Acesso à área atualizado.",
+    );
+    if (ok) setAccessUserId("");
+  }
+
   async function confirmDelete() {
     if (!deleteTarget) return;
     const target = deleteTarget;
@@ -2513,7 +2667,7 @@ function Configuration({
             className={tab === "areas" ? "active" : ""}
             onClick={() => setTab("areas")}
           >
-            Áreas
+            Áreas e acessos
           </button>
         )}
       </div>
@@ -2755,10 +2909,10 @@ function Configuration({
         <div className="settings-card">
           <header>
             <div>
-              <h2>Áreas</h2>
+              <h2>Áreas e acessos</h2>
               <p>
                 Cadastre e administre Secretarias, Coordenadorias e demais
-                áreas.
+                áreas, além de definir quem pode acessar cada uma.
               </p>
             </div>
           </header>
@@ -2803,6 +2957,60 @@ function Configuration({
                 </div>
               </div>
             ))}
+          </div>
+          <div className="access-manager">
+            <header>
+              <div>
+                <h3>Acessos da área selecionada</h3>
+                <p>Libere perfis para testar a visão de Admin ou Membro em {areas.find((area) => area.id === areaId)?.name || "esta área"}.</p>
+              </div>
+              <span>{accessMembers.length} {accessMembers.length === 1 ? "acesso" : "acessos"}</span>
+            </header>
+            <div className="access-form">
+              <label>
+                Usuário
+                <select value={accessUserId} onChange={(event) => setAccessUserId(event.target.value)}>
+                  <option value="">Selecione um usuário cadastrado</option>
+                  {profiles.filter((profile) => !accessMembers.some((member) => member.id === profile.id)).map((profile) => (
+                    <option value={profile.id} key={profile.id}>{profile.name} — {profile.email}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Perfil de acesso
+                <select value={accessRole} onChange={(event) => setAccessRole(event.target.value as "admin" | "member")}>
+                  <option value="member">Membro</option>
+                  <option value="admin">Admin da área</option>
+                </select>
+              </label>
+              <button className="primary" disabled={busy || !accessUserId} onClick={addAccess}><Plus /> Liberar acesso</button>
+            </div>
+            <div className="access-list">
+              {accessMembers.map((member) => (
+                <div className="access-row" key={member.id}>
+                  <i>{initials(member.name)}</i>
+                  <div><b>{member.name}</b><small>{member.email || "Usuário cadastrado"}</small></div>
+                  <select
+                    value={member.role}
+                    onChange={(event) => run(
+                      () => supabase.from("group_members").update({ role: event.target.value }).eq("group_id", areaId).eq("user_id", member.id),
+                      "Perfil de acesso atualizado.",
+                    )}
+                  >
+                    <option value="member">Membro</option>
+                    <option value="admin">Admin da área</option>
+                  </select>
+                  <button
+                    title={`Remover acesso de ${member.name}`}
+                    onClick={() => run(
+                      () => supabase.from("group_members").delete().eq("group_id", areaId).eq("user_id", member.id),
+                      "Acesso removido.",
+                    )}
+                  ><Trash2 /></button>
+                </div>
+              ))}
+              {!accessMembers.length && <div className="config-empty">Nenhum usuário com acesso direto a esta área.</div>}
+            </div>
           </div>
         </div>
       )}
@@ -3174,9 +3382,15 @@ function Configuration({
 
 type UpdateValues = {
   id: string;
+  catalogId: string;
+  sei: string;
+  openedAt: string;
   status: Status;
   stage: string;
   ownerId: string;
+  observation: string;
+  priority: Priority;
+  custom: Record<string, string>;
   justification: string;
   subjectId: string;
   advance: boolean;
@@ -3184,6 +3398,8 @@ type UpdateValues = {
 function EditProject({
   project,
   members,
+  catalog,
+  fields,
   role,
   open,
   setOpen,
@@ -3191,25 +3407,47 @@ function EditProject({
 }: {
   project: Project;
   members: Member[];
+  catalog: CatalogItem[];
+  fields: FieldDef[];
   role: Role;
   open: boolean;
   setOpen: (v: boolean) => void;
   onUpdate: (v: UpdateValues) => Promise<void>;
 }) {
+  const activeCatalog = catalog.filter((item) => item.active);
+  const initialCatalog = activeCatalog.find((item) => item.id === project.catalogId);
+  const [projectName, setProjectName] = useState(initialCatalog?.projectName || project.name);
   const availableStages = [
-    ...new Set([...stages, ...project.workflow.map((step) => step.stageName)]),
+    ...new Set([
+      ...stages,
+      ...project.workflow.map((step) => step.stageName),
+      ...activeCatalog.flatMap((item) => item.workflow.map((step) => step.stageName)),
+    ]),
   ];
   const [v, setV] = useState<UpdateValues>({
       id: project.id,
+      catalogId: project.catalogId,
+      sei: project.sei,
+      openedAt: project.openedAt,
       status: project.status,
       stage: project.stage,
       ownerId: project.ownerId,
+      observation: project.observation,
+      priority: project.priority,
+      custom: Object.fromEntries(
+        project.customValues.map((value) => [value.field_id, value.value]),
+      ),
       justification: "",
       subjectId: "",
       advance: false,
     }),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const selectedCatalog = activeCatalog.find((item) => item.id === v.catalogId);
+  const projectNames = [...new Set(activeCatalog.map((item) => item.projectName))];
+  const demands = activeCatalog.filter((item) => item.projectName === projectName);
+  const visible = (key: string) => fields.some((field) => field.key === key && field.visible);
+  const required = (key: string) => !!fields.find((field) => field.key === key)?.required;
   async function submit(advance = false) {
     if (v.justification.trim().length < 3) {
       setError("A justificativa é obrigatória.");
@@ -3227,53 +3465,119 @@ function EditProject({
   }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="update-dialog">
+      <DialogContent className="update-dialog full-edit-dialog">
         <DialogHeader>
-          <DialogTitle>Atualizar {ticket(project.ticket)}</DialogTitle>
+          <DialogTitle>Editar informações — {ticket(project.ticket)}</DialogTitle>
           <DialogDescription>
-            Toda troca registra quem realizou a alteração.
+            Corrija os dados preenchidos na abertura. A alteração ficará registrada no histórico.
           </DialogDescription>
         </DialogHeader>
-        <div className="form update-form">
-          <div>
-            <label>
-              Status
-              <select
-                value={v.status}
-                onChange={(e) =>
-                  setV({ ...v, status: e.target.value as Status })
-                }
-              >
-                {statuses.map((x) => (
-                  <option key={x}>{x}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Etapa
-              <select
-                value={v.stage}
-                onChange={(e) => setV({ ...v, stage: e.target.value })}
-              >
-                {availableStages.map((x) => (
-                  <option key={x}>{x}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <label>
-            Responsável
-            <select
-              value={v.ownerId}
-              onChange={(e) => setV({ ...v, ownerId: e.target.value })}
-            >
-              {members.map((m) => (
-                <option value={m.id} key={m.id}>
-                  {m.name}
-                </option>
+        <div className="form update-form full-ticket-edit">
+          {error && <div className="project-submit-error" role="alert"><XCircle /><span>{error}</span></div>}
+
+          <section>
+            <h3>Projeto e demanda</h3>
+            <div className="edit-grid">
+              <label>
+                Projeto
+                <select
+                  value={projectName}
+                  onChange={(event) => {
+                    const name = event.target.value;
+                    const item = activeCatalog.find((entry) => entry.projectName === name);
+                    setProjectName(name);
+                    setV((value) => ({
+                      ...value,
+                      catalogId: item?.id || "",
+                      stage: item?.workflow[0]?.stageName || value.stage,
+                      ownerId: item?.workflow[0]?.assigneeId || value.ownerId,
+                    }));
+                  }}
+                >
+                  {projectNames.map((name) => <option key={name}>{name}</option>)}
+                </select>
+              </label>
+              <label>
+                Demanda
+                <select
+                  value={v.catalogId}
+                  onChange={(event) => {
+                    const item = activeCatalog.find((entry) => entry.id === event.target.value);
+                    setV((value) => ({
+                      ...value,
+                      catalogId: event.target.value,
+                      stage: item?.workflow[0]?.stageName || value.stage,
+                      ownerId: item?.workflow[0]?.assigneeId || value.ownerId,
+                    }));
+                  }}
+                >
+                  {demands.map((item) => <option value={item.id} key={item.id}>{item.demandName}</option>)}
+                </select>
+              </label>
+            </div>
+            <div className="edit-sla-preview">
+              <span>SLA cadastrado</span>
+              <b>{selectedCatalog ? formatSla(selectedCatalog.slaValue, selectedCatalog.slaUnit) : "Selecione uma demanda"}</b>
+              {selectedCatalog?.workflow.length ? <small>{selectedCatalog.workflow.length} etapas configuradas</small> : null}
+            </div>
+          </section>
+
+          <section>
+            <h3>Dados do ticket</h3>
+            <div className="edit-grid">
+              {visible("sei") && (
+                <label>Nº do SEI{required("sei") && " *"}<input required={required("sei")} value={v.sei} onChange={(event) => setV({ ...v, sei: event.target.value })} /></label>
+              )}
+              {visible("openedAt") && (
+                <label>Data de abertura{required("openedAt") && " *"}<input type="date" required={required("openedAt")} value={v.openedAt} onChange={(event) => setV({ ...v, openedAt: event.target.value })} /></label>
+              )}
+              <label>
+                Prioridade
+                <select value={v.priority} onChange={(event) => setV({ ...v, priority: event.target.value as Priority })}>
+                  <option>Alta</option><option>Média</option><option>Baixa</option>
+                </select>
+              </label>
+              {fields.filter((field) => !field.system && field.visible).map((field) => (
+                <label key={field.id}>{field.label}{field.required && " *"}
+                  {field.type === "textarea" ? (
+                    <textarea required={field.required} value={v.custom[field.id] || ""} onChange={(event) => setV({ ...v, custom: { ...v.custom, [field.id]: event.target.value } })} />
+                  ) : (
+                    <input type={field.type} required={field.required} value={v.custom[field.id] || ""} onChange={(event) => setV({ ...v, custom: { ...v.custom, [field.id]: event.target.value } })} />
+                  )}
+                </label>
               ))}
-            </select>
-          </label>
+            </div>
+            {visible("observation") && (
+              <label>Observação{required("observation") && " *"}<textarea required={required("observation")} value={v.observation} onChange={(event) => setV({ ...v, observation: event.target.value })} /></label>
+            )}
+          </section>
+
+          <section>
+            <h3>Andamento do processo</h3>
+            <div className="edit-grid">
+              <label>
+                Status
+                <select value={v.status} onChange={(event) => setV({ ...v, status: event.target.value as Status })}>
+                  {statuses.map((status) => <option key={status}>{status}</option>)}
+                </select>
+              </label>
+              <label>
+                Etapa
+                <select value={v.stage} onChange={(event) => setV({ ...v, stage: event.target.value })}>
+                  {availableStages.map((stage) => <option key={stage}>{stage}</option>)}
+                </select>
+              </label>
+              <label>
+                Responsável
+                <select value={v.ownerId} onChange={(event) => setV({ ...v, ownerId: event.target.value })}>
+                  {members.map((member) => <option value={member.id} key={member.id}>{member.name}</option>)}
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section>
+            <h3>Registro da alteração</h3>
           {role !== "member" && (
             <label>
               Justificativa referente a
@@ -3302,7 +3606,7 @@ function EditProject({
               placeholder="Explique o motivo da alteração"
             />
           </label>
-          {error && <div className="auth-message">{error}</div>}
+          </section>
           {project.workflow.some((step) => step.status === "current") && (
             <div className="advance-summary">
               <div>
