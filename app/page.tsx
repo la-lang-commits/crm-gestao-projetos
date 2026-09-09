@@ -350,6 +350,7 @@ function Workspace({ user }: { user: any }) {
     [mobile, setMobile] = useState(false),
     [newOpen, setNewOpen] = useState(false),
     [editProject, setEditProject] = useState<Project | null>(null),
+    [detailProject, setDetailProject] = useState<Project | null>(null),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -455,9 +456,8 @@ function Workspace({ user }: { user: any }) {
     );
     if (jr.error)
       setError("Não foi possível carregar os projetos: " + jr.error.message);
-    else
-      setAllProjects(
-        (jr.data || []).map((p: any) => ({
+    else {
+      const mappedProjects: Project[] = (jr.data || []).map((p: any) => ({
           id: p.id,
           ticket: Number(p.ticket_number),
           sei: p.sei_number || "",
@@ -515,9 +515,15 @@ function Workspace({ user }: { user: any }) {
                 new Date(b.created_at).getTime() -
                 new Date(a.created_at).getTime(),
             ),
-          customValues: p.custom_values || [],
-        })),
+        customValues: p.custom_values || [],
+      }));
+      setAllProjects(mappedProjects);
+      setDetailProject((opened) =>
+        opened
+          ? mappedProjects.find((project) => project.id === opened.id) || null
+          : null,
       );
+    }
     setLoading(false);
   }
   useEffect(() => {
@@ -808,17 +814,8 @@ function Workspace({ user }: { user: any }) {
               projects={projects}
               mode={projectMode}
               setMode={setProjectMode}
-              edit={setEditProject}
+              openProject={setDetailProject}
               fields={areaFields}
-              labelProject={labelProject}
-              setLabelProject={setLabelProject}
-              labelText={labelText}
-              setLabelText={setLabelText}
-              addLabel={addLabel}
-              removeLabel={removeLabel}
-              commentDrafts={commentDrafts}
-              setCommentDrafts={setCommentDrafts}
-              addComment={addComment}
             />
           )}
         </div>
@@ -831,6 +828,27 @@ function Workspace({ user }: { user: any }) {
           open={!!editProject}
           setOpen={(v) => !v && setEditProject(null)}
           onUpdate={updateProject}
+        />
+      )}
+      {detailProject && (
+        <ProjectDetail
+          project={detailProject}
+          fields={areaFields}
+          open={!!detailProject}
+          setOpen={(value) => !value && setDetailProject(null)}
+          edit={(project) => {
+            setDetailProject(null);
+            setEditProject(project);
+          }}
+          labelProject={labelProject}
+          setLabelProject={setLabelProject}
+          labelText={labelText}
+          setLabelText={setLabelText}
+          addLabel={addLabel}
+          removeLabel={removeLabel}
+          commentDrafts={commentDrafts}
+          setCommentDrafts={setCommentDrafts}
+          addComment={addComment}
         />
       )}
     </div>
@@ -1004,18 +1022,7 @@ function Dashboard({
 type ListProps = {
   projects: Project[];
   fields: FieldDef[];
-  edit?: (p: Project) => void;
-  labelProject?: string;
-  setLabelProject?: (id: string) => void;
-  labelText?: string;
-  setLabelText?: (v: string) => void;
-  addLabel?: (id: string) => void;
-  removeLabel?: (id: string) => void;
-  commentDrafts?: Record<string, string>;
-  setCommentDrafts?: React.Dispatch<
-    React.SetStateAction<Record<string, string>>
-  >;
-  addComment?: (id: string) => void;
+  openProject?: (p: Project) => void;
 };
 function ProjectsView(
   props: ListProps & {
@@ -1052,7 +1059,7 @@ function ProjectsView(
     </section>
   );
 }
-function Kanban({ projects, edit }: ListProps) {
+function Kanban({ projects, openProject }: ListProps) {
   return (
     <div className="kanban-board">
       {statuses.map((status) => (
@@ -1069,7 +1076,7 @@ function Kanban({ projects, edit }: ListProps) {
                 <button
                   className="kanban-card"
                   key={p.id}
-                  onClick={() => edit?.(p)}
+                  onClick={() => openProject?.(p)}
                 >
                   <span>{ticket(p.ticket)}</span>
                   <h3>{p.name}</h3>
@@ -1089,16 +1096,7 @@ function Kanban({ projects, edit }: ListProps) {
 function TicketCards({
   projects,
   fields,
-  edit,
-  labelProject,
-  setLabelProject,
-  labelText,
-  setLabelText,
-  addLabel,
-  removeLabel,
-  commentDrafts,
-  setCommentDrafts,
-  addComment,
+  openProject,
   compact = false,
 }: ListProps & { compact?: boolean }) {
   const show = (key: string) => fields.some((f) => f.key === key && f.visible);
@@ -1110,16 +1108,21 @@ function TicketCards({
             currentStep = p.workflow.find((step) => step.status === "current"),
             stepSla = currentStep
               ? deadlineInfo(currentStep.dueAt)
-              : { label: "Sem etapa ativa", tone: "neutral" },
-            currentStepLate = stepSla.tone === "late",
-            custom = p.customValues
-              .map((v) => ({
-                value: v.value,
-                field: fields.find((f) => f.id === v.field_id),
-              }))
-              .filter((x) => x.field?.visible);
+              : { label: "Sem etapa ativa", tone: "neutral" };
           return (
-            <article className="ticket-card" key={p.id}>
+            <article
+              className={`ticket-card summary-card ${openProject ? "clickable" : ""}`}
+              key={p.id}
+              role={openProject ? "button" : undefined}
+              tabIndex={openProject ? 0 : undefined}
+              onClick={() => openProject?.(p)}
+              onKeyDown={(event) => {
+                if (openProject && (event.key === "Enter" || event.key === " ")) {
+                  event.preventDefault();
+                  openProject(p);
+                }
+              }}
+            >
               <div className="ticket-top">
                 <div>
                   <span className="ticket-number">{ticket(p.ticket)}</span>
@@ -1137,45 +1140,10 @@ function TicketCards({
                       {p.status}
                     </span>
                   )}
-                  {edit && (
-                    <button title="Atualizar projeto" onClick={() => edit(p)}>
-                      <MoreHorizontal />
-                    </button>
-                  )}
+                  {openProject && <Eye className="open-process-icon" />}
                 </div>
               </div>
-              {show("stage") && (
-                <div className="stage-flow">
-                  {(p.workflow.length
-                    ? p.workflow
-                    : stages.map((stageName, order) => ({
-                        id: stageName,
-                        stageName,
-                        order,
-                        status:
-                          order <= stages.indexOf(p.stage)
-                            ? "completed"
-                            : "pending",
-                        completedLate: false,
-                      }))
-                  ).map((step, i, flow) => (
-                    <div
-                      className={`${step.status === "current" || step.status === "completed" ? "active" : ""} ${step.completedLate ? "late-step" : ""}`}
-                      key={step.id}
-                      title={
-                        step.completedLate
-                          ? "Etapa concluída com atraso"
-                          : undefined
-                      }
-                    >
-                      <i />
-                      {i < flow.length - 1 && <span />}
-                      <small>{step.stageName}</small>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="ticket-meta">
+              <div className={`ticket-meta summary-meta ${compact ? "compact" : ""}`}>
                 {show("openedAt") && (
                   <span>
                     <b>Abertura</b>
@@ -1199,15 +1167,6 @@ function TicketCards({
                     </small>
                   </span>
                 )}
-                {p.hasDelayedStep && currentStep && stepSla.tone !== "late" && (
-                  <span className="sla-distinction">
-                    <b>Diferença dos prazos</b>
-                    <em className="ok">Etapa atual no prazo</em>
-                    <small>
-                      O atraso do projeto veio de uma etapa anterior.
-                    </small>
-                  </span>
-                )}
                 {show("ownerId") && (
                   <span>
                     <b>Responsável</b>
@@ -1220,147 +1179,13 @@ function TicketCards({
                     {p.stage}
                   </span>
                 )}
-                {custom.map((x) => (
-                  <span key={x.field!.id}>
-                    <b>{x.field!.label}</b>
-                    {x.value || "—"}
-                  </span>
-                ))}
               </div>
-              {!compact && (
-                <>
-                  {show("labels") && (
-                    <div className="label-line">
-                      <div className="label-chips">
-                        {p.labels.map((l) => (
-                          <span key={l.id}>
-                            <Tag />
-                            {l.label_text}
-                            <button
-                              title={`Remover etiqueta ${l.label_text}`}
-                              aria-label={`Remover etiqueta ${l.label_text}`}
-                              onClick={() => removeLabel?.(l.id)}
-                            >
-                              <X />
-                            </button>
-                          </span>
-                        ))}
-                        {!p.labels.length && <small>Sem etiquetas</small>}
-                      </div>
-                      {labelProject === p.id ? (
-                        <div className="label-add">
-                          <input
-                            autoFocus
-                            maxLength={120}
-                            value={labelText}
-                            onChange={(e) => setLabelText?.(e.target.value)}
-                            placeholder="Escreva uma etiqueta rápida"
-                          />
-                          <button onClick={() => addLabel?.(p.id)}>
-                            Adicionar
-                          </button>
-                          <button onClick={() => setLabelProject?.("")}>
-                            <X />
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          className="add-label"
-                          onClick={() => setLabelProject?.(p.id)}
-                        >
-                          <Plus />
-                          Etiqueta
-                        </button>
-                      )}
-                    </div>
-                  )}
-                  {show("observation") && p.observation && (
-                    <div className="ticket-observation">
-                      <b>Observação</b>
-                      {p.observation}
-                    </div>
-                  )}
-                  <section className="activity-panel">
-                    <header>
-                      <div>
-                        <MessageCircle />
-                        <b>Comentários e histórico</b>
-                      </div>
-                      <small>{p.events.length} registros</small>
-                    </header>
-                    {currentStepLate && (
-                      <div className="late-comment-warning">
-                        <Clock3 />
-                        Esta etapa está atrasada. Registre a justificativa do
-                        atraso abaixo.
-                      </div>
-                    )}
-                    <div className="comment-composer">
-                      <textarea
-                        value={commentDrafts?.[p.id] || ""}
-                        onChange={(event) =>
-                          setCommentDrafts?.((drafts) => ({
-                            ...drafts,
-                            [p.id]: event.target.value,
-                          }))
-                        }
-                        maxLength={2000}
-                        placeholder={
-                          currentStepLate
-                            ? "Justifique o atraso desta etapa..."
-                            : "Adicione um comentário ao ticket..."
-                        }
-                      />
-                      <button
-                        onClick={() => addComment?.(p.id)}
-                        disabled={(commentDrafts?.[p.id]?.trim().length || 0) < 3}
-                      >
-                        <Send />
-                        Comentar
-                      </button>
-                    </div>
-                    {p.events.length ? (
-                      <div className="activity-list">
-                        {p.events.slice(0, 8).map((event) => (
-                          <article className="activity-item" key={event.id}>
-                            <i>
-                              {event.eventType === "comentario" ? (
-                                <MessageCircle />
-                              ) : (
-                                <Activity />
-                              )}
-                            </i>
-                            <div>
-                              <b>{eventTitle(event)}</b>
-                              <p>{event.justification}</p>
-                              <small>
-                                {event.subject?.full_name &&
-                                event.subject.full_name !==
-                                  event.actor?.full_name
-                                  ? `Referente a ${event.subject.full_name} · `
-                                  : ""}
-                                Registrado por{" "}
-                                <strong>
-                                  {event.actor?.full_name || "Usuário"}
-                                </strong>{" "}
-                                em{" "}
-                                {new Date(event.created_at).toLocaleString(
-                                  "pt-BR",
-                                  { dateStyle: "short", timeStyle: "short" },
-                                )}
-                              </small>
-                            </div>
-                          </article>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="activity-empty">
-                        O histórico deste ticket começa com o primeiro
-                        comentário ou alteração.
-                      </p>
-                    )}
-                  </section>
-                </>
+              {!compact && p.labels.length > 0 && (
+                <div className="summary-labels">
+                  {p.labels.slice(0, 4).map((label) => (
+                    <span key={label.id}>{label.label_text}</span>
+                  ))}
+                </div>
               )}
             </article>
           );
@@ -1369,6 +1194,224 @@ function TicketCards({
         <div className="empty-projects">Nenhum projeto nesta área.</div>
       )}
     </div>
+  );
+}
+
+type ProjectDetailProps = {
+  project: Project;
+  fields: FieldDef[];
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  edit: (project: Project) => void;
+  labelProject: string;
+  setLabelProject: (id: string) => void;
+  labelText: string;
+  setLabelText: (value: string) => void;
+  addLabel: (id: string) => void;
+  removeLabel: (id: string) => void;
+  commentDrafts: Record<string, string>;
+  setCommentDrafts: React.Dispatch<
+    React.SetStateAction<Record<string, string>>
+  >;
+  addComment: (id: string) => void;
+};
+
+function ProjectDetail({
+  project,
+  fields,
+  open,
+  setOpen,
+  edit,
+  labelProject,
+  setLabelProject,
+  labelText,
+  setLabelText,
+  addLabel,
+  removeLabel,
+  commentDrafts,
+  setCommentDrafts,
+  addComment,
+}: ProjectDetailProps) {
+  const show = (key: string) => fields.some((field) => field.key === key && field.visible);
+  const sla = slaInfo(project);
+  const currentStep = project.workflow.find((step) => step.status === "current");
+  const stepSla = currentStep
+    ? deadlineInfo(currentStep.dueAt)
+    : { label: "Sem etapa ativa", tone: "neutral" };
+  const currentStepLate = stepSla.tone === "late";
+  const flow = project.workflow.length
+    ? project.workflow
+    : stages.map((stageName, order) => ({
+        id: stageName,
+        stageName,
+        order,
+        status: order <= stages.indexOf(project.stage) ? "completed" : "pending",
+        completedLate: false,
+      }));
+  const custom = project.customValues
+    .map((value) => ({
+      value: value.value,
+      field: fields.find((field) => field.id === value.field_id),
+    }))
+    .filter((item) => item.field?.visible);
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="process-dialog">
+        <DialogHeader className="process-header">
+          <div>
+            <div className="process-kicker">
+              <span>{ticket(project.ticket)}</span>
+              {project.sei && <small>SEI {project.sei}</small>}
+            </div>
+            <DialogTitle>{project.name}</DialogTitle>
+            <DialogDescription>{project.demand}</DialogDescription>
+          </div>
+          <div className="process-header-actions">
+            <span className={`pill ${statusConfig[project.status].className}`}>
+              {project.status}
+            </span>
+            <button className="process-edit" onClick={() => edit(project)}>
+              <Pencil />
+              Atualizar processo
+            </button>
+          </div>
+        </DialogHeader>
+
+        <div className="process-layout">
+          <main className="process-main">
+            <section className="process-section">
+              <header>
+                <div>
+                  <b>Etapa atual</b>
+                  <span>{project.stage}</span>
+                </div>
+                {currentStep && (
+                  <small>{currentStep.assignee} · {formatSla(currentStep.slaValue, currentStep.slaUnit)}</small>
+                )}
+              </header>
+              {show("stage") && (
+                <div className="stage-flow process-flow">
+                  {flow.map((step, index) => (
+                    <div
+                      className={`${step.status === "current" || step.status === "completed" ? "active" : ""} ${step.completedLate ? "late-step" : ""}`}
+                      key={step.id}
+                    >
+                      <i />
+                      {index < flow.length - 1 && <span />}
+                      <small>{step.stageName}</small>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section className="process-section">
+              <h3>Dados do processo</h3>
+              <div className="process-fields">
+                {show("openedAt") && (
+                  <div><b>Data de abertura</b><span>{new Date(project.openedAt + "T12:00:00").toLocaleDateString("pt-BR")}</span></div>
+                )}
+                <div><b>SLA do projeto</b><span className={sla.tone}>{sla.label}</span><small>{formatSla(project.slaValue, project.slaUnit)}</small></div>
+                {currentStep && (
+                  <div><b>SLA da etapa atual</b><span className={stepSla.tone}>{stepSla.label}</span><small>{currentStep.assignee}</small></div>
+                )}
+                {show("ownerId") && <div><b>Responsável</b><span>{project.owner}</span></div>}
+                {show("stage") && <div><b>Etapa</b><span>{project.stage}</span></div>}
+                <div><b>Prioridade</b><span>{project.priority}</span></div>
+                {custom.map((item) => (
+                  <div key={item.field!.id}><b>{item.field!.label}</b><span>{item.value || "—"}</span></div>
+                ))}
+              </div>
+              {project.hasDelayedStep && currentStep && stepSla.tone !== "late" && (
+                <div className="sla-history-note">
+                  <Clock3 />
+                  <div><b>Projeto atrasado por etapa anterior</b><span>A etapa atual de {currentStep.assignee} continua dentro do prazo.</span></div>
+                </div>
+              )}
+            </section>
+
+            {show("observation") && (
+              <section className="process-section">
+                <h3>Observação</h3>
+                <p className="process-observation">{project.observation || "Nenhuma observação registrada."}</p>
+              </section>
+            )}
+
+            {show("labels") && (
+              <section className="process-section">
+                <h3>Etiquetas</h3>
+                <div className="label-line process-labels">
+                  <div className="label-chips">
+                    {project.labels.map((label) => (
+                      <span key={label.id}>
+                        <Tag />
+                        {label.label_text}
+                        <button
+                          title={`Remover etiqueta ${label.label_text}`}
+                          aria-label={`Remover etiqueta ${label.label_text}`}
+                          onClick={() => removeLabel(label.id)}
+                        ><X /></button>
+                      </span>
+                    ))}
+                    {!project.labels.length && <small>Sem etiquetas</small>}
+                  </div>
+                  {labelProject === project.id ? (
+                    <div className="label-add">
+                      <input autoFocus maxLength={120} value={labelText} onChange={(event) => setLabelText(event.target.value)} placeholder="Nova etiqueta" />
+                      <button onClick={() => addLabel(project.id)}>Adicionar</button>
+                      <button onClick={() => setLabelProject("")}><X /></button>
+                    </div>
+                  ) : (
+                    <button className="add-label" onClick={() => setLabelProject(project.id)}><Plus /> Etiqueta</button>
+                  )}
+                </div>
+              </section>
+            )}
+          </main>
+
+          <aside className="process-activity">
+            <header>
+              <div><MessageCircle /><b>Comentários e histórico</b></div>
+              <small>{project.events.length} registros</small>
+            </header>
+            {currentStepLate && (
+              <div className="late-comment-warning"><Clock3 />Esta etapa está atrasada. Registre a justificativa abaixo.</div>
+            )}
+            <div className="comment-composer process-comment">
+              <textarea
+                value={commentDrafts[project.id] || ""}
+                onChange={(event) => setCommentDrafts((drafts) => ({ ...drafts, [project.id]: event.target.value }))}
+                maxLength={2000}
+                placeholder={currentStepLate ? "Justifique o atraso desta etapa..." : "Adicione um comentário..."}
+              />
+              <button onClick={() => addComment(project.id)} disabled={(commentDrafts[project.id]?.trim().length || 0) < 3}><Send />Comentar</button>
+            </div>
+            {project.events.length ? (
+              <div className="activity-list">
+                {project.events.map((event) => (
+                  <article className="activity-item" key={event.id}>
+                    <i>{event.eventType === "comentario" ? <MessageCircle /> : <Activity />}</i>
+                    <div>
+                      <b>{eventTitle(event)}</b>
+                      <p>{event.justification}</p>
+                      <small>
+                        {event.subject?.full_name && event.subject.full_name !== event.actor?.full_name
+                          ? `Referente a ${event.subject.full_name} · `
+                          : ""}
+                        Registrado por <strong>{event.actor?.full_name || "Usuário"}</strong> em {new Date(event.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                      </small>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <p className="activity-empty">O histórico começa com o primeiro comentário ou alteração.</p>
+            )}
+          </aside>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
