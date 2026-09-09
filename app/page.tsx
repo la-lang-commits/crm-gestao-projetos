@@ -16,6 +16,7 @@ import {
   FolderKanban,
   LayoutDashboard,
   List,
+  ListChecks,
   Loader2,
   LockKeyhole,
   LogOut,
@@ -47,6 +48,7 @@ type Role = "super" | "admin" | "member";
 type Status =
   "Aberto" | "Pendente" | "Em andamento" | "Concluído" | "Cancelado";
 type Priority = "Alta" | "Média" | "Baixa";
+type SlaUnit = "business_days" | "calendar_days" | "hours" | "months";
 type Area = { id: string; name: string; color: string };
 type Member = { id: string; name: string; role: string; areaId: string };
 type Label = { id: string; label_text: string; color: string };
@@ -63,7 +65,26 @@ type CatalogItem = {
   projectName: string;
   demandName: string;
   slaDays: number;
+  slaValue: number;
+  slaUnit: SlaUnit;
+  workflow: WorkflowTemplateStep[];
   active: boolean;
+};
+type WorkflowTemplateStep = {
+  id: string;
+  order: number;
+  stageName: string;
+  assigneeId: string;
+  assignee: string;
+  slaValue: number;
+  slaUnit: SlaUnit;
+};
+type ProjectWorkflowStep = WorkflowTemplateStep & {
+  status: "pending" | "current" | "completed" | "skipped";
+  startedAt: string | null;
+  dueAt: string | null;
+  completedAt: string | null;
+  completedLate: boolean;
 };
 type FieldDef = {
   id: string;
@@ -89,6 +110,11 @@ type Project = {
   priority: Priority;
   openedAt: string;
   slaDays: number;
+  slaValue: number;
+  slaUnit: SlaUnit;
+  slaDueAt: string | null;
+  hasDelayedStep: boolean;
+  workflow: ProjectWorkflowStep[];
   stage: string;
   observation: string;
   progress: number;
@@ -135,19 +161,38 @@ const initials = (name: string) =>
     .slice(0, 2)
     .toUpperCase();
 const ticket = (n: number) => "TK-" + String(n).padStart(6, "0");
+const slaUnitLabels: Record<SlaUnit, [string, string]> = {
+  business_days: ["dia útil", "dias úteis"],
+  calendar_days: ["dia corrido", "dias corridos"],
+  hours: ["hora", "horas"],
+  months: ["mês", "meses"],
+};
+const formatSla = (value: number, unit: SlaUnit) =>
+  `${value} ${slaUnitLabels[unit][value === 1 ? 0 : 1]}`;
+const deadlineInfo = (dueAt: string | null) => {
+  if (!dueAt) return { label: "Prazo não iniciado", tone: "neutral" };
+  const hours = Math.ceil((new Date(dueAt).getTime() - Date.now()) / 3600000);
+  if (hours < 0)
+    return {
+      label: `Atrasado há ${Math.max(1, Math.ceil(Math.abs(hours) / 24))}d`,
+      tone: "late",
+    };
+  if (hours <= 24) return { label: "Vence em até 24h", tone: "warning" };
+  return {
+    label: `${Math.ceil(hours / 24)}d restantes`,
+    tone: hours <= 72 ? "warning" : "ok",
+  };
+};
 const slaInfo = (p: Project) => {
   if (["Concluído", "Cancelado"].includes(p.status))
     return { label: p.status, tone: "neutral" };
-  const due = new Date(p.openedAt + "T12:00:00");
-  due.setDate(due.getDate() + p.slaDays);
-  const left = Math.ceil((due.getTime() - Date.now()) / 86400000);
-  return left < 0
-    ? { label: "SLA vencido há " + Math.abs(left) + "d", tone: "late" }
-    : left === 0
-      ? { label: "SLA vence hoje", tone: "warning" }
-      : { label: left + "d restantes", tone: left <= 2 ? "warning" : "ok" };
+  const currentStep = p.workflow.find((step) => step.status === "current");
+  if (currentStep?.dueAt && new Date(currentStep.dueAt).getTime() < Date.now())
+    return { label: "Projeto atrasado · etapa atual", tone: "late" };
+  if (p.hasDelayedStep)
+    return { label: "Projeto atrasado · etapa anterior", tone: "late" };
+  return deadlineInfo(p.slaDueAt);
 };
-
 export default function Home() {
   const [session, setSession] = useState<any>(null),
     [ready, setReady] = useState(false);
@@ -301,12 +346,14 @@ function Workspace({ user }: { user: any }) {
       supabase
         .from("projects")
         .select(
-          "id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,sla_days,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),labels:project_labels(id,label_text,color),events:project_events(id,justification,created_at,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),custom_values:project_field_values(field_id,value)",
+          "id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,sla_days,sla_value,sla_unit,sla_due_at,has_delayed_step,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),workflow:project_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,status,started_at,due_at,completed_at,completed_late,assignee:profiles!project_workflow_steps_assignee_id_fkey(full_name)),labels:project_labels(id,label_text,color),events:project_events(id,justification,created_at,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),custom_values:project_field_values(field_id,value)",
         )
         .order("updated_at", { ascending: false }),
       supabase
         .from("service_catalog")
-        .select("id,area_id,project_name,demand_name,sla_days,active")
+        .select(
+          "id,area_id,project_name,demand_name,sla_days,sla_value,sla_unit,active,workflow:service_catalog_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,assignee:profiles!service_catalog_workflow_steps_assignee_id_fkey(full_name))",
+        )
         .order("project_name"),
       supabase
         .from("ticket_field_definitions")
@@ -346,6 +393,22 @@ function Workspace({ user }: { user: any }) {
         projectName: c.project_name,
         demandName: c.demand_name,
         slaDays: c.sla_days,
+        slaValue: c.sla_value,
+        slaUnit: c.sla_unit,
+        workflow: (c.workflow || [])
+          .map((step: any) => ({
+            id: step.id,
+            order: step.step_order,
+            stageName: step.stage_name,
+            assigneeId: step.assignee_id || "",
+            assignee: step.assignee?.full_name || "Sem responsável",
+            slaValue: step.sla_value,
+            slaUnit: step.sla_unit,
+          }))
+          .sort(
+            (a: WorkflowTemplateStep, b: WorkflowTemplateStep) =>
+              a.order - b.order,
+          ),
         active: c.active,
       })),
     );
@@ -379,6 +442,29 @@ function Workspace({ user }: { user: any }) {
           priority: p.priority,
           openedAt: p.opened_at,
           slaDays: p.sla_days,
+          slaValue: p.sla_value,
+          slaUnit: p.sla_unit,
+          slaDueAt: p.sla_due_at,
+          hasDelayedStep: p.has_delayed_step,
+          workflow: (p.workflow || [])
+            .map((step: any) => ({
+              id: step.id,
+              order: step.step_order,
+              stageName: step.stage_name,
+              assigneeId: step.assignee_id || "",
+              assignee: step.assignee?.full_name || "Sem responsável",
+              slaValue: step.sla_value,
+              slaUnit: step.sla_unit,
+              status: step.status,
+              startedAt: step.started_at,
+              dueAt: step.due_at,
+              completedAt: step.completed_at,
+              completedLate: step.completed_late,
+            }))
+            .sort(
+              (a: ProjectWorkflowStep, b: ProjectWorkflowStep) =>
+                a.order - b.order,
+            ),
           stage: p.stage,
           observation: p.observation || "",
           progress: p.progress,
@@ -442,17 +528,27 @@ function Workspace({ user }: { user: any }) {
     await load();
   }
   async function updateProject(v: UpdateValues) {
-    const { error } = await supabase.rpc("update_project_with_justification", {
-      p_project_id: v.id,
-      p_status: v.status,
-      p_stage: v.stage,
-      p_owner_id: v.ownerId || null,
-      p_justification: v.justification,
-      p_subject_user_id: v.subjectId || null,
-    });
+    const { error } = v.advance
+      ? await supabase.rpc("advance_project_workflow", {
+          p_project_id: v.id,
+          p_justification: v.justification,
+          p_subject_user_id: v.subjectId || null,
+        })
+      : await supabase.rpc("update_project_with_justification", {
+          p_project_id: v.id,
+          p_status: v.status,
+          p_stage: v.stage,
+          p_owner_id: v.ownerId || null,
+          p_justification: v.justification,
+          p_subject_user_id: v.subjectId || null,
+        });
     if (error) throw error;
     setEditProject(null);
-    setNotice("Projeto atualizado com justificativa registrada.");
+    setNotice(
+      v.advance
+        ? "Etapa concluída e projeto encaminhado para o próximo responsável."
+        : "Projeto atualizado com justificativa registrada.",
+    );
     await load();
   }
   async function addLabel(projectId: string) {
@@ -625,6 +721,7 @@ function Workspace({ user }: { user: any }) {
               areaId={areaId}
               areas={areas}
               catalog={areaCatalog}
+              members={areaMembers}
               fields={areaFields}
               reload={load}
               message={setNotice}
@@ -934,6 +1031,10 @@ function TicketCards({
       {projects.length ? (
         projects.map((p) => {
           const sla = slaInfo(p),
+            currentStep = p.workflow.find((step) => step.status === "current"),
+            stepSla = currentStep
+              ? deadlineInfo(currentStep.dueAt)
+              : { label: "Sem etapa ativa", tone: "neutral" },
             latest = p.events[0],
             custom = p.customValues
               .map((v) => ({
@@ -969,17 +1070,33 @@ function TicketCards({
               </div>
               {show("stage") && (
                 <div className="stage-flow">
-                  {stages.map((s, i) => {
-                    const current = stages.indexOf(p.stage),
-                      active = i <= current;
-                    return (
-                      <div className={active ? "active" : ""} key={s}>
-                        <i />
-                        {i < stages.length - 1 && <span />}
-                        <small>{s}</small>
-                      </div>
-                    );
-                  })}
+                  {(p.workflow.length
+                    ? p.workflow
+                    : stages.map((stageName, order) => ({
+                        id: stageName,
+                        stageName,
+                        order,
+                        status:
+                          order <= stages.indexOf(p.stage)
+                            ? "completed"
+                            : "pending",
+                        completedLate: false,
+                      }))
+                  ).map((step, i, flow) => (
+                    <div
+                      className={`${step.status === "current" || step.status === "completed" ? "active" : ""} ${step.completedLate ? "late-step" : ""}`}
+                      key={step.id}
+                      title={
+                        step.completedLate
+                          ? "Etapa concluída com atraso"
+                          : undefined
+                      }
+                    >
+                      <i />
+                      {i < flow.length - 1 && <span />}
+                      <small>{step.stageName}</small>
+                    </div>
+                  ))}
                 </div>
               )}
               <div className="ticket-meta">
@@ -992,9 +1109,29 @@ function TicketCards({
                   </span>
                 )}
                 <span>
-                  <b>SLA</b>
+                  <b>SLA do projeto</b>
                   <em className={sla.tone}>{sla.label}</em>
+                  <small>{formatSla(p.slaValue, p.slaUnit)}</small>
                 </span>
+                {currentStep && (
+                  <span>
+                    <b>SLA da etapa atual</b>
+                    <em className={stepSla.tone}>{stepSla.label}</em>
+                    <small>
+                      {formatSla(currentStep.slaValue, currentStep.slaUnit)} ·{" "}
+                      {currentStep.assignee}
+                    </small>
+                  </span>
+                )}
+                {p.hasDelayedStep && currentStep && stepSla.tone !== "late" && (
+                  <span className="sla-distinction">
+                    <b>Diferença dos prazos</b>
+                    <em className="ok">Etapa atual no prazo</em>
+                    <small>
+                      O atraso do projeto veio de uma etapa anterior.
+                    </small>
+                  </span>
+                )}
                 {show("ownerId") && (
                   <span>
                     <b>Responsável</b>
@@ -1255,11 +1392,34 @@ function NewProject({
             </select>
           </label>
           <div className="sla-preview span-2">
-            <span>SLA configurado</span>
+            <span>SLA geral do projeto e da demanda</span>
             <b>
-              {selected ? selected.slaDays + " dias" : "Selecione uma demanda"}
+              {selected
+                ? formatSla(selected.slaValue, selected.slaUnit)
+                : "Selecione uma demanda"}
             </b>
           </div>
+          {selected && selected.workflow.length > 0 && (
+            <div className="workflow-preview span-2">
+              <header>
+                <div>
+                  <b>Fluxo automático por responsável</b>
+                  <span>O ticket começará pela primeira etapa.</span>
+                </div>
+                <small>{selected.workflow.length} etapas</small>
+              </header>
+              <div>
+                {selected.workflow.map((step) => (
+                  <span key={step.id}>
+                    <i>{step.order}</i>
+                    <strong>{step.stageName}</strong>
+                    <small>{step.assignee}</small>
+                    <em>{formatSla(step.slaValue, step.slaUnit)}</em>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
           {visible("sei") && (
             <label>
               Nº do SEI{required("sei") && " *"}
@@ -1285,9 +1445,14 @@ function NewProject({
             <label>
               Etapa inicial
               <select
-                value={values.stage}
+                disabled={!!selected?.workflow.length}
+                value={selected?.workflow[0]?.stageName || values.stage}
                 onChange={(e) => set("stage", e.target.value)}
               >
+                {selected?.workflow[0] &&
+                  !stages.includes(selected.workflow[0].stageName) && (
+                    <option>{selected.workflow[0].stageName}</option>
+                  )}
                 {stages.map((x) => (
                   <option key={x}>{x}</option>
                 ))}
@@ -1311,7 +1476,8 @@ function NewProject({
             <label>
               Responsável
               <select
-                value={values.ownerId}
+                disabled={!!selected?.workflow.length}
+                value={selected?.workflow[0]?.assigneeId || values.ownerId}
                 onChange={(e) => set("ownerId", e.target.value)}
               >
                 {members.map((m) => (
@@ -1446,6 +1612,7 @@ function LegacyConfiguration({
   areaId,
   areas,
   catalog,
+  members,
   fields,
   reload,
   message,
@@ -1456,6 +1623,7 @@ function LegacyConfiguration({
   areaId: string;
   areas: Area[];
   catalog: CatalogItem[];
+  members: Member[];
   fields: FieldDef[];
   reload: () => Promise<void>;
   message: (x: string) => void;
@@ -1465,6 +1633,8 @@ function LegacyConfiguration({
     [projectName, setProjectName] = useState(""),
     [demandName, setDemandName] = useState(""),
     [sla, setSla] = useState(5),
+    [slaUnit, setSlaUnit] = useState<SlaUnit>("business_days"),
+    [workflowCatalogId, setWorkflowCatalogId] = useState(""),
     [fieldLabel, setFieldLabel] = useState(""),
     [fieldType, setFieldType] = useState<FieldDef["type"]>("text"),
     [areaName, setAreaName] = useState(""),
@@ -1591,13 +1761,25 @@ function LegacyConfiguration({
               />
             </label>
             <label>
-              SLA (dias)
+              Prazo do SLA
               <input
                 type="number"
                 min="1"
                 value={sla}
                 onChange={(e) => setSla(Number(e.target.value))}
               />
+            </label>
+            <label>
+              Unidade
+              <select
+                value={slaUnit}
+                onChange={(e) => setSlaUnit(e.target.value as SlaUnit)}
+              >
+                <option value="business_days">Dias úteis</option>
+                <option value="calendar_days">Dias corridos</option>
+                <option value="hours">Horas</option>
+                <option value="months">Meses</option>
+              </select>
             </label>
             <button className="primary" disabled={busy} onClick={addCatalog}>
               <Plus />
@@ -1615,7 +1797,7 @@ function LegacyConfiguration({
               <div className="config-row" key={c.id}>
                 <b>{c.projectName}</b>
                 <span>{c.demandName}</span>
-                <span>{c.slaDays} dias</span>
+                <span>{formatSla(c.slaValue, c.slaUnit)}</span>
                 <div>
                   <button
                     title={c.active ? "Ocultar" : "Ativar"}
@@ -1827,6 +2009,7 @@ function Configuration({
   areaId,
   areas,
   catalog,
+  members,
   fields,
   reload,
   message,
@@ -1837,6 +2020,7 @@ function Configuration({
   areaId: string;
   areas: Area[];
   catalog: CatalogItem[];
+  members: Member[];
   fields: FieldDef[];
   reload: () => Promise<void>;
   message: (x: string) => void;
@@ -1846,14 +2030,22 @@ function Configuration({
   const [projectName, setProjectName] = useState("");
   const [demandName, setDemandName] = useState("");
   const [sla, setSla] = useState(5);
+  const [slaUnit, setSlaUnit] = useState<SlaUnit>("business_days");
   const [fieldLabel, setFieldLabel] = useState("");
   const [fieldType, setFieldType] = useState<FieldDef["type"]>("text");
   const [areaName, setAreaName] = useState("");
   const [busy, setBusy] = useState(false);
   const [editCatalog, setEditCatalog] = useState<CatalogItem | null>(null);
+  const [workflowCatalogId, setWorkflowCatalogId] = useState("");
+  const [workflowStage, setWorkflowStage] = useState("");
+  const [workflowAssignee, setWorkflowAssignee] = useState("");
+  const [workflowSla, setWorkflowSla] = useState(1);
+  const [workflowUnit, setWorkflowUnit] = useState<SlaUnit>("business_days");
+  const [workflowEditId, setWorkflowEditId] = useState("");
   const [editField, setEditField] = useState<FieldDef | null>(null);
   const [editArea, setEditArea] = useState<Area | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const workflowCatalog = catalog.find((c) => c.id === workflowCatalogId);
 
   async function run(action: () => PromiseLike<{ error: any }>, ok: string) {
     setBusy(true);
@@ -1879,6 +2071,8 @@ function Configuration({
           project_name: projectName.trim(),
           demand_name: demandName.trim(),
           sla_days: sla,
+          sla_value: sla,
+          sla_unit: slaUnit,
           created_by: userId,
         }),
       "Projeto e demanda adicionados.",
@@ -1886,6 +2080,47 @@ function Configuration({
     if (ok) {
       setProjectName("");
       setDemandName("");
+    }
+  }
+
+  async function addWorkflowStep() {
+    const item = catalog.find((c) => c.id === workflowCatalogId);
+    if (!item || workflowStage.trim().length < 2)
+      return fail("Informe o nome da etapa.");
+    const nextOrder = item.workflow.length
+      ? Math.max(...item.workflow.map((step) => step.order)) + 1
+      : 1;
+    const values = {
+      catalog_id: item.id,
+      area_id: areaId,
+      step_order: nextOrder,
+      stage_name: workflowStage.trim(),
+      assignee_id: workflowAssignee || null,
+      sla_value: workflowSla,
+      sla_unit: workflowUnit,
+      created_by: userId,
+    };
+    const ok = await run(
+      () =>
+        workflowEditId
+          ? supabase
+              .from("service_catalog_workflow_steps")
+              .update({
+                stage_name: values.stage_name,
+                assignee_id: values.assignee_id,
+                sla_value: values.sla_value,
+                sla_unit: values.sla_unit,
+              })
+              .eq("id", workflowEditId)
+          : supabase.from("service_catalog_workflow_steps").insert(values),
+      workflowEditId ? "Etapa atualizada." : "Etapa adicionada ao fluxo.",
+    );
+    if (ok) {
+      setWorkflowStage("");
+      setWorkflowAssignee("");
+      setWorkflowSla(1);
+      setWorkflowUnit("business_days");
+      setWorkflowEditId("");
     }
   }
 
@@ -2006,13 +2241,25 @@ function Configuration({
               />
             </label>
             <label>
-              SLA (dias)
+              Prazo do SLA
               <input
                 type="number"
                 min="1"
                 value={sla}
                 onChange={(e) => setSla(Number(e.target.value))}
               />
+            </label>
+            <label>
+              Unidade
+              <select
+                value={slaUnit}
+                onChange={(e) => setSlaUnit(e.target.value as SlaUnit)}
+              >
+                <option value="business_days">Dias úteis</option>
+                <option value="calendar_days">Dias corridos</option>
+                <option value="hours">Horas</option>
+                <option value="months">Meses</option>
+              </select>
             </label>
             <button className="primary" disabled={busy} onClick={addCatalog}>
               <Plus />
@@ -2031,11 +2278,17 @@ function Configuration({
               <div className="config-row catalog-row" key={c.id}>
                 <b>{c.projectName}</b>
                 <span>{c.demandName}</span>
-                <span>{c.slaDays} dias</span>
+                <span>{formatSla(c.slaValue, c.slaUnit)}</span>
                 <span className={"yesno " + (c.active ? "yes" : "no")}>
                   {c.active ? "SIM" : "NÃO"}
                 </span>
                 <div className="row-actions">
+                  <button
+                    title="Configurar fluxo e responsáveis"
+                    onClick={() => setWorkflowCatalogId(c.id)}
+                  >
+                    <ListChecks />
+                  </button>
                   <button
                     title={c.active ? "Ocultar" : "Ativar"}
                     onClick={() =>
@@ -2249,6 +2502,144 @@ function Configuration({
         </div>
       )}
 
+      {workflowCatalog && (
+        <Dialog open onOpenChange={(v) => !v && setWorkflowCatalogId("")}>
+          <DialogContent className="workflow-dialog">
+            <DialogHeader>
+              <DialogTitle>Fluxo por responsável</DialogTitle>
+              <DialogDescription>
+                {workflowCatalog.projectName} — {workflowCatalog.demandName}.
+                Cada etapa começa quando a anterior é concluída.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="workflow-builder">
+              <div className="workflow-total">
+                <span>SLA geral do projeto</span>
+                <b>
+                  {formatSla(workflowCatalog.slaValue, workflowCatalog.slaUnit)}
+                </b>
+              </div>
+              <div className="workflow-step-form">
+                <label>
+                  Etapa
+                  <input
+                    value={workflowStage}
+                    onChange={(e) => setWorkflowStage(e.target.value)}
+                    placeholder="Ex.: Desenvolver plataforma"
+                  />
+                </label>
+                <label>
+                  Responsável
+                  <select
+                    value={workflowAssignee}
+                    onChange={(e) => setWorkflowAssignee(e.target.value)}
+                  >
+                    <option value="">Selecionar depois</option>
+                    {members.map((member) => (
+                      <option value={member.id} key={member.id}>
+                        {member.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Prazo
+                  <input
+                    type="number"
+                    min="1"
+                    value={workflowSla}
+                    onChange={(e) => setWorkflowSla(Number(e.target.value))}
+                  />
+                </label>
+                <label>
+                  Unidade
+                  <select
+                    value={workflowUnit}
+                    onChange={(e) => setWorkflowUnit(e.target.value as SlaUnit)}
+                  >
+                    <option value="business_days">Dias úteis</option>
+                    <option value="calendar_days">Dias corridos</option>
+                    <option value="hours">Horas</option>
+                    <option value="months">Meses</option>
+                  </select>
+                </label>
+                <button
+                  className="primary"
+                  disabled={busy}
+                  onClick={addWorkflowStep}
+                >
+                  {workflowEditId ? <Pencil /> : <Plus />}
+                  {workflowEditId ? "Salvar etapa" : "Adicionar etapa"}
+                </button>
+              </div>
+              <div className="workflow-step-list">
+                {workflowCatalog.workflow.map((step) => (
+                  <article key={step.id}>
+                    <i>{step.order}</i>
+                    <div>
+                      <b>{step.stageName}</b>
+                      <span>{step.assignee}</span>
+                    </div>
+                    <strong>{formatSla(step.slaValue, step.slaUnit)}</strong>
+                    <div className="workflow-row-actions">
+                      <button
+                        title="Editar etapa"
+                        onClick={() => {
+                          setWorkflowEditId(step.id);
+                          setWorkflowStage(step.stageName);
+                          setWorkflowAssignee(step.assigneeId);
+                          setWorkflowSla(step.slaValue);
+                          setWorkflowUnit(step.slaUnit);
+                        }}
+                      >
+                        <Pencil />
+                      </button>
+                      <button
+                        title="Excluir etapa"
+                        onClick={() =>
+                          run(
+                            () =>
+                              supabase
+                                .from("service_catalog_workflow_steps")
+                                .delete()
+                                .eq("id", step.id),
+                            "Etapa excluída do fluxo.",
+                          )
+                        }
+                      >
+                        <Trash2 />
+                      </button>
+                    </div>
+                  </article>
+                ))}
+                {!workflowCatalog.workflow.length && (
+                  <div className="config-empty">
+                    Nenhuma etapa configurada. O ticket ainda poderá ser criado
+                    manualmente.
+                  </div>
+                )}
+              </div>
+              <div className="workflow-sum">
+                Soma das etapas:{" "}
+                <b>
+                  {workflowCatalog.workflow.reduce(
+                    (sum, step) =>
+                      step.slaUnit === workflowCatalog.slaUnit
+                        ? sum + step.slaValue
+                        : sum,
+                    0,
+                  )}{" "}
+                  {slaUnitLabels[workflowCatalog.slaUnit][1]}
+                </b>
+                <small>
+                  Unidades diferentes são acompanhadas separadamente.
+                </small>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {editCatalog && (
         <Dialog open onOpenChange={(v) => !v && setEditCatalog(null)}>
           <DialogContent className="config-dialog">
@@ -2284,18 +2675,36 @@ function Configuration({
                 />
               </label>
               <label>
-                SLA (dias)
+                Prazo do SLA
                 <input
                   type="number"
                   min="1"
-                  value={editCatalog.slaDays}
+                  value={editCatalog.slaValue}
                   onChange={(e) =>
                     setEditCatalog({
                       ...editCatalog,
                       slaDays: Number(e.target.value),
+                      slaValue: Number(e.target.value),
                     })
                   }
                 />
+              </label>
+              <label>
+                Unidade
+                <select
+                  value={editCatalog.slaUnit}
+                  onChange={(e) =>
+                    setEditCatalog({
+                      ...editCatalog,
+                      slaUnit: e.target.value as SlaUnit,
+                    })
+                  }
+                >
+                  <option value="business_days">Dias úteis</option>
+                  <option value="calendar_days">Dias corridos</option>
+                  <option value="hours">Horas</option>
+                  <option value="months">Meses</option>
+                </select>
               </label>
               <button
                 className="primary"
@@ -2309,6 +2718,8 @@ function Configuration({
                           project_name: editCatalog.projectName.trim(),
                           demand_name: editCatalog.demandName.trim(),
                           sla_days: editCatalog.slaDays,
+                          sla_value: editCatalog.slaValue,
+                          sla_unit: editCatalog.slaUnit,
                         })
                         .eq("id", editCatalog.id),
                     "Projeto e demanda atualizados.",
@@ -2463,6 +2874,7 @@ type UpdateValues = {
   ownerId: string;
   justification: string;
   subjectId: string;
+  advance: boolean;
 };
 function EditProject({
   project,
@@ -2479,6 +2891,9 @@ function EditProject({
   setOpen: (v: boolean) => void;
   onUpdate: (v: UpdateValues) => Promise<void>;
 }) {
+  const availableStages = [
+    ...new Set([...stages, ...project.workflow.map((step) => step.stageName)]),
+  ];
   const [v, setV] = useState<UpdateValues>({
       id: project.id,
       status: project.status,
@@ -2486,10 +2901,11 @@ function EditProject({
       ownerId: project.ownerId,
       justification: "",
       subjectId: "",
+      advance: false,
     }),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  async function submit() {
+  async function submit(advance = false) {
     if (v.justification.trim().length < 3) {
       setError("A justificativa é obrigatória.");
       return;
@@ -2497,7 +2913,7 @@ function EditProject({
     setBusy(true);
     setError("");
     try {
-      await onUpdate(v);
+      await onUpdate({ ...v, advance });
     } catch (e: any) {
       setError(e.message || "Não foi possível atualizar.");
     } finally {
@@ -2534,7 +2950,7 @@ function EditProject({
                 value={v.stage}
                 onChange={(e) => setV({ ...v, stage: e.target.value })}
               >
-                {stages.map((x) => (
+                {availableStages.map((x) => (
                   <option key={x}>{x}</option>
                 ))}
               </select>
@@ -2582,7 +2998,30 @@ function EditProject({
             />
           </label>
           {error && <div className="auth-message">{error}</div>}
-          <button className="primary wide" disabled={busy} onClick={submit}>
+          {project.workflow.some((step) => step.status === "current") && (
+            <div className="advance-summary">
+              <div>
+                <b>Concluir etapa atual</b>
+                <span>
+                  {
+                    project.workflow.find((step) => step.status === "current")
+                      ?.stageName
+                  }
+                  {project.workflow.some((step) => step.status === "pending")
+                    ? " → encaminhar para a próxima pessoa"
+                    : " → concluir o projeto"}
+                </span>
+              </div>
+              <button disabled={busy} onClick={() => submit(true)}>
+                <CheckCircle2 /> Concluir e encaminhar
+              </button>
+            </div>
+          )}
+          <button
+            className="primary wide"
+            disabled={busy}
+            onClick={() => submit(false)}
+          >
             {busy ? <Loader2 /> : "Salvar alteração e justificativa"}
           </button>
         </div>
