@@ -632,6 +632,28 @@
   font-weight: 700;
 }
 
+.project-submit-error {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 11px 12px;
+  border: 1px solid #e8c7c1;
+  border-radius: 8px;
+  background: #f8e5e2;
+  color: #8f4037;
+  font-size: 12px;
+  box-shadow: 0 5px 14px #6f332b14;
+}
+
+.project-submit-error svg {
+  width: 17px;
+  height: 17px;
+  flex: none;
+}
+
 .confirm-actions {
   display: flex;
   justify-content: flex-end;

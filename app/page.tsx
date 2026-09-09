@@ -457,13 +457,11 @@ function Workspace({ user }: { user: any }) {
   }
   async function addLabel(projectId: string) {
     if (!labelText.trim()) return;
-    const { error } = await supabase
-      .from("project_labels")
-      .insert({
-        project_id: projectId,
-        label_text: labelText.trim(),
-        color: "#e3ece7",
-      });
+    const { error } = await supabase.from("project_labels").insert({
+      project_id: projectId,
+      label_text: labelText.trim(),
+      color: "#e3ece7",
+    });
     if (error) {
       setError(error.message);
       return;
@@ -834,7 +832,7 @@ function Dashboard({
           </div>
           <button onClick={openProjects}>Ver todos</button>
         </header>
-          <TicketCards projects={projects.slice(0, 3)} fields={fields} compact />
+        <TicketCards projects={projects.slice(0, 3)} fields={fields} compact />
       </section>
     </>
   );
@@ -930,8 +928,7 @@ function TicketCards({
   addLabel,
   compact = false,
 }: ListProps & { compact?: boolean }) {
-  const show = (key: string) =>
-    fields.some((f) => f.key === key && f.visible);
+  const show = (key: string) => fields.some((f) => f.key === key && f.visible);
   return (
     <div className="ticket-list">
       {projects.length ? (
@@ -1153,20 +1150,23 @@ function NewProject({
   }, [open, area]);
   const selected = active.find((c) => c.id === values.catalogId),
     demands = active.filter((c) => c.projectName === projectName),
-    visible = (key: string) =>
-      fields.some((f) => f.key === key && f.visible),
+    visible = (key: string) => fields.some((f) => f.key === key && f.visible),
     required = (key: string) => !!fields.find((f) => f.key === key)?.required,
     set = (key: keyof NewValues, value: any) =>
       setValues((v) => ({ ...v, [key]: value }));
   async function submit() {
-    if (!values.catalogId) {
+    const payload = {
+      ...values,
+      catalogId: values.catalogId || active[0]?.id || "",
+    };
+    if (!payload.catalogId) {
       setError("Cadastre um projeto, uma demanda e o SLA em Configurações.");
       return;
     }
     setBusy(true);
     setError("");
     try {
-      await onCreate(values);
+      await onCreate(payload);
       setOpen(false);
     } catch (e: any) {
       setError(e.message || "Não foi possível criar o ticket.");
@@ -1195,11 +1195,23 @@ function NewProject({
             visível somente para a área {area}.
           </DialogDescription>
         </DialogHeader>
-        <div className="new-form">
+        <form
+          className="new-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+        >
           <div className="auto-ticket">
             <span>Nº do ticket</span>
             <b>Gerado automaticamente ao salvar</b>
           </div>
+          {error && (
+            <div className="project-submit-error span-2" role="alert">
+              <XCircle />
+              <span>{error}</span>
+            </div>
+          )}
           {!active.length && (
             <div className="config-required span-2">
               <Settings />
@@ -1408,16 +1420,21 @@ function NewProject({
               </section>
             </div>
           )}
-          {error && <div className="auth-message span-2">{error}</div>}
           <button
-            type="button"
+            type="submit"
             className="primary wide span-2"
             disabled={busy || !active.length}
-            onClick={submit}
           >
-            {busy ? <Loader2 /> : "Criar ticket"}
+            {busy ? (
+              <>
+                <Loader2 />
+                Salvando...
+              </>
+            ) : (
+              "Criar ticket"
+            )}
           </button>
-        </div>
+        </form>
       </DialogContent>
     </Dialog>
   );
@@ -1469,15 +1486,13 @@ function LegacyConfiguration({
       return fail("Informe projeto e demanda.");
     await run(
       () =>
-        supabase
-          .from("service_catalog")
-          .insert({
-            area_id: areaId,
-            project_name: projectName.trim(),
-            demand_name: demandName.trim(),
-            sla_days: sla,
-            created_by: userId,
-          }),
+        supabase.from("service_catalog").insert({
+          area_id: areaId,
+          project_name: projectName.trim(),
+          demand_name: demandName.trim(),
+          sla_days: sla,
+          created_by: userId,
+        }),
       "Item incluído no catálogo.",
     );
     setProjectName("");
@@ -1487,16 +1502,14 @@ function LegacyConfiguration({
     if (fieldLabel.trim().length < 2) return fail("Informe o nome do campo.");
     await run(
       () =>
-        supabase
-          .from("ticket_field_definitions")
-          .insert({
-            area_id: areaId,
-            field_key: "custom_" + Date.now(),
-            label: fieldLabel.trim(),
-            field_type: fieldType,
-            created_by: userId,
-            sort_order: 100 + fields.length,
-          }),
+        supabase.from("ticket_field_definitions").insert({
+          area_id: areaId,
+          field_key: "custom_" + Date.now(),
+          label: fieldLabel.trim(),
+          field_type: fieldType,
+          created_by: userId,
+          sort_order: 100 + fields.length,
+        }),
       "Campo adicionado ao formulário.",
     );
     setFieldLabel("");
@@ -1505,13 +1518,11 @@ function LegacyConfiguration({
     if (areaName.trim().length < 2) return fail("Informe o nome da área.");
     await run(
       () =>
-        supabase
-          .from("groups")
-          .insert({
-            name: areaName.trim(),
-            color: "#7f9b88",
-            created_by: userId,
-          }),
+        supabase.from("groups").insert({
+          name: areaName.trim(),
+          color: "#7f9b88",
+          created_by: userId,
+        }),
       "Área criada com os campos padrão.",
     );
     setAreaName("");
@@ -1811,11 +1822,25 @@ const fieldTypeLabels: Record<FieldDef["type"], string> = {
 };
 
 function Configuration({
-  role, userId, areaId, areas, catalog, fields, reload, message, fail,
+  role,
+  userId,
+  areaId,
+  areas,
+  catalog,
+  fields,
+  reload,
+  message,
+  fail,
 }: {
-  role: Role; userId: string; areaId: string; areas: Area[];
-  catalog: CatalogItem[]; fields: FieldDef[]; reload: () => Promise<void>;
-  message: (x: string) => void; fail: (x: string) => void;
+  role: Role;
+  userId: string;
+  areaId: string;
+  areas: Area[];
+  catalog: CatalogItem[];
+  fields: FieldDef[];
+  reload: () => Promise<void>;
+  message: (x: string) => void;
+  fail: (x: string) => void;
 }) {
   const [tab, setTab] = useState<"catalog" | "fields" | "areas">("catalog");
   const [projectName, setProjectName] = useState("");
@@ -1831,159 +1856,602 @@ function Configuration({
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
 
   async function run(action: () => PromiseLike<{ error: any }>, ok: string) {
-    setBusy(true); fail("");
+    setBusy(true);
+    fail("");
     const { error } = await action();
     setBusy(false);
-    if (error) { fail(error.message); return false; }
-    message(ok); await reload(); return true;
+    if (error) {
+      fail(error.message);
+      return false;
+    }
+    message(ok);
+    await reload();
+    return true;
   }
 
   async function addCatalog() {
-    if (!projectName.trim() || !demandName.trim()) return fail("Informe projeto e demanda.");
-    const ok = await run(() => supabase.from("service_catalog").insert({
-      area_id: areaId, project_name: projectName.trim(), demand_name: demandName.trim(),
-      sla_days: sla, created_by: userId,
-    }), "Projeto e demanda adicionados.");
-    if (ok) { setProjectName(""); setDemandName(""); }
+    if (!projectName.trim() || !demandName.trim())
+      return fail("Informe projeto e demanda.");
+    const ok = await run(
+      () =>
+        supabase.from("service_catalog").insert({
+          area_id: areaId,
+          project_name: projectName.trim(),
+          demand_name: demandName.trim(),
+          sla_days: sla,
+          created_by: userId,
+        }),
+      "Projeto e demanda adicionados.",
+    );
+    if (ok) {
+      setProjectName("");
+      setDemandName("");
+    }
   }
 
   async function addField() {
     if (fieldLabel.trim().length < 2) return fail("Informe o nome do campo.");
-    const ok = await run(() => supabase.from("ticket_field_definitions").insert({
-      area_id: areaId, field_key: "custom_" + Date.now(), label: fieldLabel.trim(),
-      field_type: fieldType, created_by: userId, sort_order: 100 + fields.length,
-    }), "Campo adicionado ao formulário.");
+    const ok = await run(
+      () =>
+        supabase.from("ticket_field_definitions").insert({
+          area_id: areaId,
+          field_key: "custom_" + Date.now(),
+          label: fieldLabel.trim(),
+          field_type: fieldType,
+          created_by: userId,
+          sort_order: 100 + fields.length,
+        }),
+      "Campo adicionado ao formulário.",
+    );
     if (ok) setFieldLabel("");
   }
 
   async function addArea() {
     if (areaName.trim().length < 2) return fail("Informe o nome da área.");
-    const ok = await run(() => supabase.from("groups").insert({
-      name: areaName.trim(), color: "#7f9b88", created_by: userId,
-    }), "Área criada com os campos padrão.");
+    const ok = await run(
+      () =>
+        supabase.from("groups").insert({
+          name: areaName.trim(),
+          color: "#7f9b88",
+          created_by: userId,
+        }),
+      "Área criada com os campos padrão.",
+    );
     if (ok) setAreaName("");
   }
 
   async function confirmDelete() {
     if (!deleteTarget) return;
     const target = deleteTarget;
-    const action = target.kind === "catalog"
-      ? () => supabase.from("service_catalog").delete().eq("id", target.id)
-      : target.kind === "field"
-        ? () => supabase.from("ticket_field_definitions").delete().eq("id", target.id)
-        : () => supabase.from("groups").delete().eq("id", target.id);
-    const ok = await run(action, target.kind === "area"
-      ? "Área e dados vinculados excluídos."
-      : target.kind === "field" ? "Campo excluído." : "Projeto e demanda excluídos.");
+    const action =
+      target.kind === "catalog"
+        ? () => supabase.from("service_catalog").delete().eq("id", target.id)
+        : target.kind === "field"
+          ? () =>
+              supabase
+                .from("ticket_field_definitions")
+                .delete()
+                .eq("id", target.id)
+          : () => supabase.from("groups").delete().eq("id", target.id);
+    const ok = await run(
+      action,
+      target.kind === "area"
+        ? "Área e dados vinculados excluídos."
+        : target.kind === "field"
+          ? "Campo excluído."
+          : "Projeto e demanda excluídos.",
+    );
     if (ok) setDeleteTarget(null);
   }
 
-  if (role === "member") return <div className="settings-denied"><ShieldCheck/><h2>Configuração restrita</h2><p>Somente o administrador da área e o Super Admin podem alterar.</p></div>;
+  if (role === "member")
+    return (
+      <div className="settings-denied">
+        <ShieldCheck />
+        <h2>Configuração restrita</h2>
+        <p>Somente o administrador da área e o Super Admin podem alterar.</p>
+      </div>
+    );
 
   return (
     <section className="settings-page">
       <div className="settings-tabs">
-        <button className={tab === "catalog" ? "active" : ""} onClick={() => setTab("catalog")}>Projetos, demandas e SLA</button>
-        <button className={tab === "fields" ? "active" : ""} onClick={() => setTab("fields")}>Campos do ticket</button>
-        {role === "super" && <button className={tab === "areas" ? "active" : ""} onClick={() => setTab("areas")}>Áreas</button>}
+        <button
+          className={tab === "catalog" ? "active" : ""}
+          onClick={() => setTab("catalog")}
+        >
+          Projetos, demandas e SLA
+        </button>
+        <button
+          className={tab === "fields" ? "active" : ""}
+          onClick={() => setTab("fields")}
+        >
+          Campos do ticket
+        </button>
+        {role === "super" && (
+          <button
+            className={tab === "areas" ? "active" : ""}
+            onClick={() => setTab("areas")}
+          >
+            Áreas
+          </button>
+        )}
       </div>
 
-      {tab === "catalog" && <div className="settings-card">
-        <header><div><h2>Projetos, demandas e SLA</h2><p>Cada linha representa uma combinação disponível para os tickets.</p></div></header>
-        <div className="catalog-form">
-          <label>Projeto<input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="Ex.: Plataforma de Sustentabilidade"/></label>
-          <label>Demanda<input value={demandName} onChange={(e) => setDemandName(e.target.value)} placeholder="Ex.: Análise técnica"/></label>
-          <label>SLA (dias)<input type="number" min="1" value={sla} onChange={(e) => setSla(Number(e.target.value))}/></label>
-          <button className="primary" disabled={busy} onClick={addCatalog}><Plus/>Adicionar</button>
-        </div>
-        <div className="config-table">
-          <div className="config-row catalog-row head"><span>Projeto</span><span>Demanda</span><span>SLA</span><span>Ativo</span><span>Ações</span></div>
-          {catalog.map((c) => <div className="config-row catalog-row" key={c.id}>
-            <b>{c.projectName}</b><span>{c.demandName}</span><span>{c.slaDays} dias</span>
-            <span className={"yesno " + (c.active ? "yes" : "no")}>{c.active ? "SIM" : "NÃO"}</span>
-            <div className="row-actions">
-              <button title={c.active ? "Ocultar" : "Ativar"} onClick={() => run(() => supabase.from("service_catalog").update({ active: !c.active }).eq("id", c.id), c.active ? "Opção ocultada." : "Opção ativada.")}>{c.active ? <Eye/> : <EyeOff/>}</button>
-              <button title="Editar" onClick={() => setEditCatalog({ ...c })}><Pencil/></button>
-              <button title="Excluir" onClick={() => setDeleteTarget({ kind: "catalog", id: c.id, label: c.projectName + " — " + c.demandName })}><Trash2/></button>
+      {tab === "catalog" && (
+        <div className="settings-card">
+          <header>
+            <div>
+              <h2>Projetos, demandas e SLA</h2>
+              <p>
+                Cada linha representa uma combinação disponível para os tickets.
+              </p>
             </div>
-          </div>)}
-          {!catalog.length && <div className="config-empty">Nenhuma opção cadastrada nesta área.</div>}
-        </div>
-      </div>}
-
-      {tab === "fields" && <div className="settings-card">
-        <header><div><h2>Campos do ticket</h2><p>Defina o nome, obrigatoriedade e exibição de cada campo.</p></div></header>
-        <div className="field-form">
-          <label>Nome do novo campo<input value={fieldLabel} onChange={(e) => setFieldLabel(e.target.value)} placeholder="Ex.: Órgão solicitante"/></label>
-          <label>Tipo<select value={fieldType} onChange={(e) => setFieldType(e.target.value as FieldDef["type"])}><option value="text">Texto curto</option><option value="textarea">Texto longo</option><option value="number">Número</option><option value="date">Data</option></select></label>
-          <button className="primary" disabled={busy} onClick={addField}><Plus/>Adicionar campo</button>
-        </div>
-        <div className="field-list">
-          <div className="field-item field-head"><span>Campo</span><span>Tipo</span><span>Obrigatório</span><span>Exibir</span><span>Ações</span></div>
-          {fields.map((f) => <div className="field-item" key={f.id}>
-            <div><b>{f.label}</b><span>{f.system ? "Campo padrão" : "Campo personalizado"}</span></div>
-            <span className="field-type">{fieldTypeLabels[f.type]}</span>
-            <button className={"yesno " + (f.required ? "required" : "no")} onClick={() => run(() => supabase.from("ticket_field_definitions").update({ required: !f.required }).eq("id", f.id), "Obrigatoriedade atualizada.")}>{f.required ? "SIM" : "NÃO"}</button>
-            <button className={"yesno " + (f.visible ? "yes" : "no")} onClick={() => run(() => supabase.from("ticket_field_definitions").update({ visible: !f.visible }).eq("id", f.id), "Visibilidade atualizada.")}>{f.visible ? "SIM" : "NÃO"}</button>
-            <div className="row-actions">
-              <button title="Editar" onClick={() => setEditField({ ...f })}><Pencil/></button>
-              <button title="Excluir" onClick={() => setDeleteTarget({ kind: "field", id: f.id, label: f.label })}><Trash2/></button>
+          </header>
+          <div className="catalog-form">
+            <label>
+              Projeto
+              <input
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="Ex.: Plataforma de Sustentabilidade"
+              />
+            </label>
+            <label>
+              Demanda
+              <input
+                value={demandName}
+                onChange={(e) => setDemandName(e.target.value)}
+                placeholder="Ex.: Análise técnica"
+              />
+            </label>
+            <label>
+              SLA (dias)
+              <input
+                type="number"
+                min="1"
+                value={sla}
+                onChange={(e) => setSla(Number(e.target.value))}
+              />
+            </label>
+            <button className="primary" disabled={busy} onClick={addCatalog}>
+              <Plus />
+              Adicionar
+            </button>
+          </div>
+          <div className="config-table">
+            <div className="config-row catalog-row head">
+              <span>Projeto</span>
+              <span>Demanda</span>
+              <span>SLA</span>
+              <span>Ativo</span>
+              <span>Ações</span>
             </div>
-          </div>)}
+            {catalog.map((c) => (
+              <div className="config-row catalog-row" key={c.id}>
+                <b>{c.projectName}</b>
+                <span>{c.demandName}</span>
+                <span>{c.slaDays} dias</span>
+                <span className={"yesno " + (c.active ? "yes" : "no")}>
+                  {c.active ? "SIM" : "NÃO"}
+                </span>
+                <div className="row-actions">
+                  <button
+                    title={c.active ? "Ocultar" : "Ativar"}
+                    onClick={() =>
+                      run(
+                        () =>
+                          supabase
+                            .from("service_catalog")
+                            .update({ active: !c.active })
+                            .eq("id", c.id),
+                        c.active ? "Opção ocultada." : "Opção ativada.",
+                      )
+                    }
+                  >
+                    {c.active ? <Eye /> : <EyeOff />}
+                  </button>
+                  <button
+                    title="Editar"
+                    onClick={() => setEditCatalog({ ...c })}
+                  >
+                    <Pencil />
+                  </button>
+                  <button
+                    title="Excluir"
+                    onClick={() =>
+                      setDeleteTarget({
+                        kind: "catalog",
+                        id: c.id,
+                        label: c.projectName + " — " + c.demandName,
+                      })
+                    }
+                  >
+                    <Trash2 />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {!catalog.length && (
+              <div className="config-empty">
+                Nenhuma opção cadastrada nesta área.
+              </div>
+            )}
+          </div>
         </div>
-      </div>}
+      )}
 
-      {tab === "areas" && role === "super" && <div className="settings-card">
-        <header><div><h2>Áreas</h2><p>Cadastre e administre Secretarias, Coordenadorias e demais áreas.</p></div></header>
-        <div className="area-form"><input value={areaName} onChange={(e) => setAreaName(e.target.value)} placeholder="Ex.: Secretaria do Meio Ambiente"/><button className="primary" disabled={busy} onClick={addArea}><Plus/>Adicionar área</button></div>
-        <div className="config-table">
-          <div className="area-row head"><span>Área</span><span>Ações</span></div>
-          {areas.map((a) => <div className="area-row" key={a.id}>
-            <div><i style={{ background: a.color }}/><Building2/><b>{a.name}</b></div>
-            <div className="row-actions">
-              <button title="Editar nome" onClick={() => setEditArea({ ...a })}><Pencil/></button>
-              <button title="Excluir área" onClick={() => setDeleteTarget({ kind: "area", id: a.id, label: a.name })}><Trash2/></button>
+      {tab === "fields" && (
+        <div className="settings-card">
+          <header>
+            <div>
+              <h2>Campos do ticket</h2>
+              <p>Defina o nome, obrigatoriedade e exibição de cada campo.</p>
             </div>
-          </div>)}
+          </header>
+          <div className="field-form">
+            <label>
+              Nome do novo campo
+              <input
+                value={fieldLabel}
+                onChange={(e) => setFieldLabel(e.target.value)}
+                placeholder="Ex.: Órgão solicitante"
+              />
+            </label>
+            <label>
+              Tipo
+              <select
+                value={fieldType}
+                onChange={(e) =>
+                  setFieldType(e.target.value as FieldDef["type"])
+                }
+              >
+                <option value="text">Texto curto</option>
+                <option value="textarea">Texto longo</option>
+                <option value="number">Número</option>
+                <option value="date">Data</option>
+              </select>
+            </label>
+            <button className="primary" disabled={busy} onClick={addField}>
+              <Plus />
+              Adicionar campo
+            </button>
+          </div>
+          <div className="field-list">
+            <div className="field-item field-head">
+              <span>Campo</span>
+              <span>Tipo</span>
+              <span>Obrigatório</span>
+              <span>Exibir</span>
+              <span>Ações</span>
+            </div>
+            {fields.map((f) => (
+              <div className="field-item" key={f.id}>
+                <div>
+                  <b>{f.label}</b>
+                  <span>
+                    {f.system ? "Campo padrão" : "Campo personalizado"}
+                  </span>
+                </div>
+                <span className="field-type">{fieldTypeLabels[f.type]}</span>
+                <button
+                  className={"yesno " + (f.required ? "required" : "no")}
+                  onClick={() =>
+                    run(
+                      () =>
+                        supabase
+                          .from("ticket_field_definitions")
+                          .update({
+                            required: !f.required,
+                            visible: !f.required ? true : f.visible,
+                          })
+                          .eq("id", f.id),
+                      "Obrigatoriedade atualizada.",
+                    )
+                  }
+                >
+                  {f.required ? "SIM" : "NÃO"}
+                </button>
+                <button
+                  className={"yesno " + (f.visible ? "yes" : "no")}
+                  onClick={() =>
+                    run(
+                      () =>
+                        supabase
+                          .from("ticket_field_definitions")
+                          .update({
+                            visible: !f.visible,
+                            required: f.visible ? false : f.required,
+                          })
+                          .eq("id", f.id),
+                      "Visibilidade atualizada.",
+                    )
+                  }
+                >
+                  {f.visible ? "SIM" : "NÃO"}
+                </button>
+                <div className="row-actions">
+                  <button title="Editar" onClick={() => setEditField({ ...f })}>
+                    <Pencil />
+                  </button>
+                  <button
+                    title="Excluir"
+                    onClick={() =>
+                      setDeleteTarget({
+                        kind: "field",
+                        id: f.id,
+                        label: f.label,
+                      })
+                    }
+                  >
+                    <Trash2 />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-      </div>}
+      )}
 
-      {editCatalog && <Dialog open onOpenChange={(v) => !v && setEditCatalog(null)}>
-        <DialogContent className="config-dialog"><DialogHeader><DialogTitle>Editar projeto e demanda</DialogTitle><DialogDescription>Altere os dados que aparecem no cadastro do ticket.</DialogDescription></DialogHeader>
-          <div className="config-edit-form">
-            <label>Projeto<input value={editCatalog.projectName} onChange={(e) => setEditCatalog({ ...editCatalog, projectName: e.target.value })}/></label>
-            <label>Demanda<input value={editCatalog.demandName} onChange={(e) => setEditCatalog({ ...editCatalog, demandName: e.target.value })}/></label>
-            <label>SLA (dias)<input type="number" min="1" value={editCatalog.slaDays} onChange={(e) => setEditCatalog({ ...editCatalog, slaDays: Number(e.target.value) })}/></label>
-            <button className="primary" disabled={busy} onClick={async () => { const ok = await run(() => supabase.from("service_catalog").update({ project_name: editCatalog.projectName.trim(), demand_name: editCatalog.demandName.trim(), sla_days: editCatalog.slaDays }).eq("id", editCatalog.id), "Projeto e demanda atualizados."); if (ok) setEditCatalog(null); }}>Salvar alterações</button>
+      {tab === "areas" && role === "super" && (
+        <div className="settings-card">
+          <header>
+            <div>
+              <h2>Áreas</h2>
+              <p>
+                Cadastre e administre Secretarias, Coordenadorias e demais
+                áreas.
+              </p>
+            </div>
+          </header>
+          <div className="area-form">
+            <input
+              value={areaName}
+              onChange={(e) => setAreaName(e.target.value)}
+              placeholder="Ex.: Secretaria do Meio Ambiente"
+            />
+            <button className="primary" disabled={busy} onClick={addArea}>
+              <Plus />
+              Adicionar área
+            </button>
           </div>
-        </DialogContent>
-      </Dialog>}
-
-      {editField && <Dialog open onOpenChange={(v) => !v && setEditField(null)}>
-        <DialogContent className="config-dialog"><DialogHeader><DialogTitle>Editar campo</DialogTitle><DialogDescription>O nome atualizado será usado no formulário e nos tickets.</DialogDescription></DialogHeader>
-          <div className="config-edit-form">
-            <label>Nome do campo<input value={editField.label} onChange={(e) => setEditField({ ...editField, label: e.target.value })}/></label>
-            <label>Tipo<select disabled={editField.system} value={editField.type} onChange={(e) => setEditField({ ...editField, type: e.target.value as FieldDef["type"] })}><option value="text">Texto curto</option><option value="textarea">Texto longo</option><option value="number">Número</option><option value="date">Data</option></select></label>
-            <button className="primary" disabled={busy} onClick={async () => { const ok = await run(() => supabase.from("ticket_field_definitions").update({ label: editField.label.trim(), field_type: editField.type }).eq("id", editField.id), "Campo atualizado."); if (ok) setEditField(null); }}>Salvar alterações</button>
+          <div className="config-table">
+            <div className="area-row head">
+              <span>Área</span>
+              <span>Ações</span>
+            </div>
+            {areas.map((a) => (
+              <div className="area-row" key={a.id}>
+                <div>
+                  <i style={{ background: a.color }} />
+                  <Building2 />
+                  <b>{a.name}</b>
+                </div>
+                <div className="row-actions">
+                  <button
+                    title="Editar nome"
+                    onClick={() => setEditArea({ ...a })}
+                  >
+                    <Pencil />
+                  </button>
+                  <button
+                    title="Excluir área"
+                    onClick={() =>
+                      setDeleteTarget({ kind: "area", id: a.id, label: a.name })
+                    }
+                  >
+                    <Trash2 />
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
-        </DialogContent>
-      </Dialog>}
+        </div>
+      )}
 
-      {editArea && <Dialog open onOpenChange={(v) => !v && setEditArea(null)}>
-        <DialogContent className="config-dialog"><DialogHeader><DialogTitle>Editar nome da área</DialogTitle><DialogDescription>A alteração será refletida em todo o CRM.</DialogDescription></DialogHeader>
-          <div className="config-edit-form">
-            <label>Nome da área<input value={editArea.name} onChange={(e) => setEditArea({ ...editArea, name: e.target.value })}/></label>
-            <button className="primary" disabled={busy} onClick={async () => { const ok = await run(() => supabase.from("groups").update({ name: editArea.name.trim() }).eq("id", editArea.id), "Nome da área atualizado."); if (ok) setEditArea(null); }}>Salvar alterações</button>
-          </div>
-        </DialogContent>
-      </Dialog>}
+      {editCatalog && (
+        <Dialog open onOpenChange={(v) => !v && setEditCatalog(null)}>
+          <DialogContent className="config-dialog">
+            <DialogHeader>
+              <DialogTitle>Editar projeto e demanda</DialogTitle>
+              <DialogDescription>
+                Altere os dados que aparecem no cadastro do ticket.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="config-edit-form">
+              <label>
+                Projeto
+                <input
+                  value={editCatalog.projectName}
+                  onChange={(e) =>
+                    setEditCatalog({
+                      ...editCatalog,
+                      projectName: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Demanda
+                <input
+                  value={editCatalog.demandName}
+                  onChange={(e) =>
+                    setEditCatalog({
+                      ...editCatalog,
+                      demandName: e.target.value,
+                    })
+                  }
+                />
+              </label>
+              <label>
+                SLA (dias)
+                <input
+                  type="number"
+                  min="1"
+                  value={editCatalog.slaDays}
+                  onChange={(e) =>
+                    setEditCatalog({
+                      ...editCatalog,
+                      slaDays: Number(e.target.value),
+                    })
+                  }
+                />
+              </label>
+              <button
+                className="primary"
+                disabled={busy}
+                onClick={async () => {
+                  const ok = await run(
+                    () =>
+                      supabase
+                        .from("service_catalog")
+                        .update({
+                          project_name: editCatalog.projectName.trim(),
+                          demand_name: editCatalog.demandName.trim(),
+                          sla_days: editCatalog.slaDays,
+                        })
+                        .eq("id", editCatalog.id),
+                    "Projeto e demanda atualizados.",
+                  );
+                  if (ok) setEditCatalog(null);
+                }}
+              >
+                Salvar alterações
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
 
-      {deleteTarget && <Dialog open onOpenChange={(v) => !v && setDeleteTarget(null)}>
-        <DialogContent className="confirm-dialog"><DialogHeader><DialogTitle>Confirmar exclusão</DialogTitle><DialogDescription>{deleteTarget.kind === "area" ? "Ao excluir esta área, todos os tickets, integrantes e configurações vinculados também serão removidos." : "Esta ação não poderá ser desfeita."}</DialogDescription></DialogHeader>
-          <div className="delete-summary">{deleteTarget.label}</div>
-          <div className="confirm-actions"><button onClick={() => setDeleteTarget(null)}>Cancelar</button><button className="danger-button" disabled={busy} onClick={confirmDelete}><Trash2/>Excluir definitivamente</button></div>
-        </DialogContent>
-      </Dialog>}
+      {editField && (
+        <Dialog open onOpenChange={(v) => !v && setEditField(null)}>
+          <DialogContent className="config-dialog">
+            <DialogHeader>
+              <DialogTitle>Editar campo</DialogTitle>
+              <DialogDescription>
+                O nome atualizado será usado no formulário e nos tickets.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="config-edit-form">
+              <label>
+                Nome do campo
+                <input
+                  value={editField.label}
+                  onChange={(e) =>
+                    setEditField({ ...editField, label: e.target.value })
+                  }
+                />
+              </label>
+              <label>
+                Tipo
+                <select
+                  disabled={editField.system}
+                  value={editField.type}
+                  onChange={(e) =>
+                    setEditField({
+                      ...editField,
+                      type: e.target.value as FieldDef["type"],
+                    })
+                  }
+                >
+                  <option value="text">Texto curto</option>
+                  <option value="textarea">Texto longo</option>
+                  <option value="number">Número</option>
+                  <option value="date">Data</option>
+                </select>
+              </label>
+              <button
+                className="primary"
+                disabled={busy}
+                onClick={async () => {
+                  const ok = await run(
+                    () =>
+                      supabase
+                        .from("ticket_field_definitions")
+                        .update({
+                          label: editField.label.trim(),
+                          field_type: editField.type,
+                        })
+                        .eq("id", editField.id),
+                    "Campo atualizado.",
+                  );
+                  if (ok) setEditField(null);
+                }}
+              >
+                Salvar alterações
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {editArea && (
+        <Dialog open onOpenChange={(v) => !v && setEditArea(null)}>
+          <DialogContent className="config-dialog">
+            <DialogHeader>
+              <DialogTitle>Editar nome da área</DialogTitle>
+              <DialogDescription>
+                A alteração será refletida em todo o CRM.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="config-edit-form">
+              <label>
+                Nome da área
+                <input
+                  value={editArea.name}
+                  onChange={(e) =>
+                    setEditArea({ ...editArea, name: e.target.value })
+                  }
+                />
+              </label>
+              <button
+                className="primary"
+                disabled={busy}
+                onClick={async () => {
+                  const ok = await run(
+                    () =>
+                      supabase
+                        .from("groups")
+                        .update({ name: editArea.name.trim() })
+                        .eq("id", editArea.id),
+                    "Nome da área atualizado.",
+                  );
+                  if (ok) setEditArea(null);
+                }}
+              >
+                Salvar alterações
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {deleteTarget && (
+        <Dialog open onOpenChange={(v) => !v && setDeleteTarget(null)}>
+          <DialogContent className="confirm-dialog">
+            <DialogHeader>
+              <DialogTitle>Confirmar exclusão</DialogTitle>
+              <DialogDescription>
+                {deleteTarget.kind === "area"
+                  ? "Ao excluir esta área, todos os tickets, integrantes e configurações vinculados também serão removidos."
+                  : "Esta ação não poderá ser desfeita."}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="delete-summary">{deleteTarget.label}</div>
+            <div className="confirm-actions">
+              <button onClick={() => setDeleteTarget(null)}>Cancelar</button>
+              <button
+                className="danger-button"
+                disabled={busy}
+                onClick={confirmDelete}
+              >
+                <Trash2 />
+                Excluir definitivamente
+              </button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </section>
   );
 }
