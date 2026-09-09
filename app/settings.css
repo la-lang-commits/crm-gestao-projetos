@@ -2330,6 +2330,141 @@
   overflow: hidden;
 }
 
+.access-area-picker {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(240px, .75fr);
+  align-items: end;
+  gap: 14px;
+  margin-bottom: 12px;
+  padding: 14px;
+  border: 1px solid #d9e3de;
+  border-radius: 10px;
+  background: #eef4f1;
+}
+
+.access-area-picker label,
+.access-identity-form label {
+  display: grid;
+  gap: 6px;
+  color: #315e52;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.access-area-picker select,
+.access-identity-form input,
+.access-identity-form select {
+  width: 100%;
+  height: 42px;
+  border: 1px solid var(--input);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0 10px;
+  color: var(--ink);
+  font: inherit;
+}
+
+.access-area-picker > div {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 11px;
+  border-left: 3px solid #285e59;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.access-area-picker > div svg {
+  width: 18px;
+  color: #285e59;
+}
+
+.access-area-picker > div span {
+  display: grid;
+  gap: 1px;
+}
+
+.access-area-picker > div small {
+  color: #8a8176;
+  font-size: 9px;
+}
+
+.access-area-picker > div b {
+  color: #285e59;
+  font-size: 12px;
+}
+
+.access-identity-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #e4ded3;
+  border-radius: 10px;
+  background: #f8f6f1;
+}
+
+.access-identity-form label > small {
+  display: inline;
+  color: #948b80;
+  font-size: 9px;
+  font-weight: 500;
+}
+
+.access-role-help {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #e6efeb;
+}
+
+.access-role-help svg {
+  width: 18px;
+  flex: none;
+  color: #285e59;
+}
+
+.access-role-help div {
+  display: grid;
+  gap: 3px;
+}
+
+.access-role-help b {
+  color: #285e59;
+  font-size: 11px;
+}
+
+.access-role-help span {
+  color: #66756f;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.access-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.access-form-actions button {
+  min-height: 40px;
+}
+
+.access-form-actions .secondary {
+  border: 1px solid #ccd8d2;
+  border-radius: 8px;
+  background: #fff;
+  padding: 0 14px;
+  color: #42655d;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .access-row {
   display: grid;
   grid-template-columns: 34px minmax(180px, 1fr) 150px 34px;
@@ -2338,6 +2473,82 @@
   padding: 10px 12px;
   border-bottom: 1px solid #ebe6dc;
   background: #fff;
+}
+
+.access-list .access-row {
+  grid-template-columns: minmax(190px, 1.1fr) minmax(190px, 1fr) minmax(150px, .75fr) minmax(150px, .78fr) 76px;
+}
+
+.access-list .access-head {
+  min-height: 42px;
+  background: #eef0ef;
+}
+
+.access-list .access-head > span {
+  color: #7d857f;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.access-person {
+  display: flex !important;
+  align-items: center;
+  gap: 9px !important;
+}
+
+.access-person i {
+  width: 32px;
+  height: 32px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #dbe9e4;
+  color: #285e59;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.access-contact {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.access-contact span,
+.access-contact small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.access-contact span {
+  color: #45524e;
+  font-size: 11px;
+}
+
+.access-state {
+  width: fit-content;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.access-state.active {
+  background: #dfeee6;
+  color: #2f6a58;
+}
+
+.access-state.pending {
+  background: #f5ead1;
+  color: #8a672a;
+}
+
+.access-list .row-actions {
+  justify-content: flex-end;
 }
 
 .access-row:last-child {
@@ -2412,6 +2623,24 @@
   .access-form,
   .access-row {
     grid-template-columns: 1fr;
+  }
+
+  .access-area-picker,
+  .access-identity-form,
+  .access-list .access-row {
+    grid-template-columns: 1fr;
+  }
+
+  .access-list .access-head {
+    display: none;
+  }
+
+  .access-form-actions {
+    justify-content: stretch;
+  }
+
+  .access-form-actions button {
+    flex: 1;
   }
 
   .sla-step-list article > i {

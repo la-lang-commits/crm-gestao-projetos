@@ -51,9 +51,20 @@ type Status =
   "Aberto" | "Pendente" | "Em andamento" | "Concluído" | "Cancelado";
 type Priority = "Alta" | "Média" | "Baixa";
 type SlaUnit = "business_days" | "calendar_days" | "hours" | "months";
+type AccessRole = "administrator" | "manager" | "member";
 type Area = { id: string; name: string; color: string };
-type Member = { id: string; name: string; email?: string; role: string; areaId: string };
-type ProfileOption = { id: string; name: string; email: string };
+type Member = { id: string; name: string; email?: string; phone?: string; role: string; areaId: string };
+type ProfileOption = { id: string; name: string; email: string; phone?: string };
+type AccessEntry = {
+  id: string;
+  areaId: string;
+  userId: string | null;
+  fullName: string;
+  email: string;
+  phone: string;
+  accessRole: AccessRole;
+  createdAt: string;
+};
 type Label = { id: string; label_text: string; color: string };
 type Event = {
   id: string;
@@ -134,8 +145,8 @@ type Project = {
 };
 
 const roleLabels: Record<Role, string> = {
-  super: "Super Admin",
-  admin: "Admin da área",
+  super: "Administrador",
+  admin: "Gestor",
   member: "Membro",
 };
 const stages = [
@@ -349,12 +360,13 @@ function Login() {
 }
 
 function Workspace({ user }: { user: any }) {
-  const [role, setRole] = useState<Role>("member"),
+  const [platformRole, setPlatformRole] = useState("member"),
     [name, setName] = useState(user.email?.split("@")[0] || "Usuário"),
     [areas, setAreas] = useState<Area[]>([]),
     [areaId, setAreaId] = useState(""),
     [members, setMembers] = useState<Member[]>([]),
     [profiles, setProfiles] = useState<ProfileOption[]>([]),
+    [accesses, setAccesses] = useState<AccessEntry[]>([]),
     [allProjects, setAllProjects] = useState<Project[]>([]),
     [catalog, setCatalog] = useState<CatalogItem[]>([]),
     [fields, setFields] = useState<FieldDef[]>([]),
@@ -372,10 +384,21 @@ function Workspace({ user }: { user: any }) {
     [labelProject, setLabelProject] = useState(""),
     [labelText, setLabelText] = useState(""),
     [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const role: Role =
+    platformRole === "super_admin"
+      ? "super"
+      : members.some(
+            (member) =>
+              member.areaId === areaId &&
+              member.id === user.id &&
+              member.role === "admin",
+          )
+        ? "admin"
+        : "member";
   async function load() {
     setLoading(true);
     setError("");
-    const [pr, ar, mr, jr, cr, fr, ur] = await Promise.all([
+    const [pr, ar, mr, jr, cr, fr, ur, aa] = await Promise.all([
       supabase
         .from("profiles")
         .select("full_name,platform_role")
@@ -385,7 +408,7 @@ function Workspace({ user }: { user: any }) {
       supabase
         .from("group_members")
         .select(
-          "group_id,role,user_id,profile:profiles!group_members_user_id_fkey(id,full_name,email)",
+          "group_id,role,user_id,profile:profiles!group_members_user_id_fkey(id,full_name,email,phone)",
         ),
       supabase
         .from("projects")
@@ -405,17 +428,15 @@ function Workspace({ user }: { user: any }) {
           "id,area_id,field_key,label,field_type,required,visible,is_system,sort_order",
         )
         .order("sort_order"),
-      supabase.from("profiles").select("id,email,full_name").order("full_name"),
+      supabase.from("profiles").select("id,email,full_name,phone").order("full_name"),
+      supabase
+        .from("area_accesses")
+        .select("id,area_id,user_id,full_name,email,phone,access_role,created_at")
+        .order("full_name"),
     ]);
     if (pr.data) {
       setName(pr.data.full_name || user.email);
-      setRole(
-        pr.data.platform_role === "super_admin"
-          ? "super"
-          : mr.data?.some((x: any) => x.role === "admin")
-            ? "admin"
-            : "member",
-      );
+      setPlatformRole(pr.data.platform_role);
     }
     if (ar.data) {
       setAreas(ar.data);
@@ -428,6 +449,7 @@ function Workspace({ user }: { user: any }) {
         id: m.user_id,
         name: m.profile?.full_name || "Usuário",
         email: m.profile?.email || "",
+        phone: m.profile?.phone || "",
         role: m.role,
         areaId: m.group_id,
       })),
@@ -437,6 +459,19 @@ function Workspace({ user }: { user: any }) {
         id: profile.id,
         name: profile.full_name || profile.email,
         email: profile.email,
+        phone: profile.phone || "",
+      })),
+    );
+    setAccesses(
+      (aa.data || []).map((access: any) => ({
+        id: access.id,
+        areaId: access.area_id,
+        userId: access.user_id,
+        fullName: access.full_name,
+        email: access.email,
+        phone: access.phone || "",
+        accessRole: access.access_role,
+        createdAt: access.created_at,
       })),
     );
     setCatalog(
@@ -822,8 +857,7 @@ function Workspace({ user }: { user: any }) {
               areas={areas}
               catalog={areaCatalog}
               members={areaMembers}
-              accessMembers={scopedMembers}
-              profiles={profiles}
+              accesses={accesses}
               fields={areaFields}
               reload={load}
               message={setNotice}
@@ -2548,8 +2582,7 @@ function Configuration({
   areas,
   catalog,
   members,
-  accessMembers,
-  profiles,
+  accesses,
   fields,
   reload,
   message,
@@ -2561,8 +2594,7 @@ function Configuration({
   areas: Area[];
   catalog: CatalogItem[];
   members: Member[];
-  accessMembers: Member[];
-  profiles: ProfileOption[];
+  accesses: AccessEntry[];
   fields: FieldDef[];
   reload: () => Promise<void>;
   message: (x: string) => void;
@@ -2576,8 +2608,12 @@ function Configuration({
   const [fieldLabel, setFieldLabel] = useState("");
   const [fieldType, setFieldType] = useState<FieldDef["type"]>("text");
   const [areaName, setAreaName] = useState("");
-  const [accessUserId, setAccessUserId] = useState("");
-  const [accessRole, setAccessRole] = useState<"admin" | "member">("member");
+  const [accessAreaId, setAccessAreaId] = useState(areaId);
+  const [accessName, setAccessName] = useState("");
+  const [accessEmail, setAccessEmail] = useState("");
+  const [accessPhone, setAccessPhone] = useState("");
+  const [accessRole, setAccessRole] = useState<AccessRole>("member");
+  const [editingAccessId, setEditingAccessId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [editCatalog, setEditCatalog] = useState<CatalogItem | null>(null);
   const [workflowCatalogId, setWorkflowCatalogId] = useState("");
@@ -2590,6 +2626,15 @@ function Configuration({
   const [editArea, setEditArea] = useState<Area | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const workflowCatalog = catalog.find((c) => c.id === workflowCatalogId);
+  const selectedAreaAccesses = accesses.filter(
+    (access) => access.areaId === accessAreaId,
+  );
+
+  useEffect(() => {
+    if (!areas.some((area) => area.id === accessAreaId)) {
+      setAccessAreaId(areas[0]?.id || "");
+    }
+  }, [areas, accessAreaId]);
 
   async function run(action: () => PromiseLike<{ error: any }>, ok: string) {
     setBusy(true);
@@ -2699,17 +2744,63 @@ function Configuration({
     if (ok) setAreaName("");
   }
 
-  async function addAccess() {
-    if (!areaId || !accessUserId) return fail("Selecione um usuário para liberar o acesso.");
+  function clearAccessForm() {
+    setAccessName("");
+    setAccessEmail("");
+    setAccessPhone("");
+    setAccessRole("member");
+    setEditingAccessId(null);
+  }
+
+  async function saveAccess() {
+    if (!accessAreaId) return fail("Selecione a área deste acesso.");
+    if (accessName.trim().length < 2) return fail("Informe o nome completo.");
+    if (!accessEmail.includes("@")) return fail("Informe um e-mail válido.");
     const ok = await run(
       () =>
-        supabase.from("group_members").upsert(
-          { group_id: areaId, user_id: accessUserId, role: accessRole },
-          { onConflict: "group_id,user_id" },
-        ),
-      "Acesso à área atualizado.",
+        supabase.rpc("save_area_access", {
+          p_access_id: editingAccessId,
+          p_area_id: accessAreaId,
+          p_full_name: accessName.trim(),
+          p_email: accessEmail.trim().toLowerCase(),
+          p_phone: accessPhone.trim() || null,
+          p_access_role: accessRole,
+        }),
+      editingAccessId ? "Acesso atualizado." : "Acesso cadastrado para a área.",
     );
-    if (ok) setAccessUserId("");
+    if (ok) clearAccessForm();
+  }
+
+  function editAccess(access: AccessEntry) {
+    setAccessAreaId(access.areaId);
+    setAccessName(access.fullName);
+    setAccessEmail(access.email);
+    setAccessPhone(access.phone);
+    setAccessRole(access.accessRole);
+    setEditingAccessId(access.id);
+  }
+
+  async function changeAccessRole(access: AccessEntry, nextRole: AccessRole) {
+    await run(
+      () =>
+        supabase.rpc("save_area_access", {
+          p_access_id: access.id,
+          p_area_id: access.areaId,
+          p_full_name: access.fullName,
+          p_email: access.email,
+          p_phone: access.phone || null,
+          p_access_role: nextRole,
+        }),
+      "Perfil de acesso atualizado.",
+    );
+  }
+
+  async function removeAccess(access: AccessEntry) {
+    const ok = await run(
+      () => supabase.rpc("remove_area_access", { p_access_id: access.id }),
+      "Acesso removido.",
+    );
+    if (ok && editingAccessId === access.id) clearAccessForm();
   }
 
   async function confirmDelete() {
@@ -2741,7 +2832,7 @@ function Configuration({
       <div className="settings-denied">
         <ShieldCheck />
         <h2>Configuração restrita</h2>
-        <p>Somente o administrador da área e o Super Admin podem alterar.</p>
+        <p>Somente o Gestor da área e o Administrador podem alterar.</p>
       </div>
     );
 
@@ -3059,55 +3150,101 @@ function Configuration({
           <div className="access-manager">
             <header>
               <div>
-                <h3>Acessos da área selecionada</h3>
-                <p>Libere perfis para testar a visão de Admin ou Membro em {areas.find((area) => area.id === areaId)?.name || "esta área"}.</p>
+                <h3>Acessos por área</h3>
+                <p>Selecione uma área para cadastrar e visualizar somente os acessos vinculados a ela.</p>
               </div>
-              <span>{accessMembers.length} {accessMembers.length === 1 ? "acesso" : "acessos"}</span>
+              <span>{selectedAreaAccesses.length} {selectedAreaAccesses.length === 1 ? "acesso" : "acessos"}</span>
             </header>
-            <div className="access-form">
+            <div className="access-area-picker">
               <label>
-                Usuário
-                <select value={accessUserId} onChange={(event) => setAccessUserId(event.target.value)}>
-                  <option value="">Selecione um usuário cadastrado</option>
-                  {profiles.filter((profile) => !accessMembers.some((member) => member.id === profile.id)).map((profile) => (
-                    <option value={profile.id} key={profile.id}>{profile.name} — {profile.email}</option>
+                Área que será administrada
+                <select
+                  value={accessAreaId}
+                  onChange={(event) => {
+                    setAccessAreaId(event.target.value);
+                    clearAccessForm();
+                  }}
+                >
+                  <option value="">Selecione uma área</option>
+                  {areas.map((area) => (
+                    <option value={area.id} key={area.id}>{area.name}</option>
                   ))}
                 </select>
               </label>
+              <div>
+                <Building2 />
+                <span><small>Área selecionada</small><b>{areas.find((area) => area.id === accessAreaId)?.name || "Nenhuma área selecionada"}</b></span>
+              </div>
+            </div>
+
+            <div className="access-identity-form">
+              <label>
+                Nome completo
+                <input value={accessName} onChange={(event) => setAccessName(event.target.value)} placeholder="Ex.: Maria da Silva" />
+              </label>
+              <label>
+                E-mail
+                <input type="email" value={accessEmail} onChange={(event) => setAccessEmail(event.target.value)} placeholder="nome@orgao.sp.gov.br" />
+              </label>
+              <label>
+                Telefone <small>Opcional</small>
+                <input value={accessPhone} onChange={(event) => setAccessPhone(event.target.value)} placeholder="(11) 99999-9999" />
+              </label>
               <label>
                 Perfil de acesso
-                <select value={accessRole} onChange={(event) => setAccessRole(event.target.value as "admin" | "member")}>
+                <select value={accessRole} onChange={(event) => setAccessRole(event.target.value as AccessRole)}>
+                  <option value="administrator">Administrador</option>
+                  <option value="manager">Gestor</option>
                   <option value="member">Membro</option>
-                  <option value="admin">Admin da área</option>
                 </select>
               </label>
-              <button className="primary" disabled={busy || !accessUserId} onClick={addAccess}><Plus /> Liberar acesso</button>
+              <div className="access-role-help">
+                <ShieldCheck />
+                <div>
+                  <b>{accessRole === "administrator" ? "Administrador" : accessRole === "manager" ? "Gestor" : "Membro"}</b>
+                  <span>
+                    {accessRole === "administrator"
+                      ? "Acesso total a todas as áreas, configurações e processos."
+                      : accessRole === "manager"
+                        ? "Controle da equipe desta área, relatórios e aprovações de processos."
+                        : "Acesso limitado às ferramentas do dia a dia e execução de tarefas desta área."}
+                  </span>
+                </div>
+              </div>
+              <div className="access-form-actions">
+                {editingAccessId && <button className="secondary" onClick={clearAccessForm}>Cancelar</button>}
+                <button className="primary" disabled={busy || !accessAreaId} onClick={saveAccess}>
+                  <Plus /> {editingAccessId ? "Salvar alterações" : "Cadastrar acesso"}
+                </button>
+              </div>
             </div>
+
             <div className="access-list">
-              {accessMembers.map((member) => (
-                <div className="access-row" key={member.id}>
-                  <i>{initials(member.name)}</i>
-                  <div><b>{member.name}</b><small>{member.email || "Usuário cadastrado"}</small></div>
+              <div className="access-row access-head">
+                <span>Usuário</span><span>Contato</span><span>Perfil</span><span>Situação</span><span>Ações</span>
+              </div>
+              {selectedAreaAccesses.map((access) => (
+                <div className="access-row" key={access.id}>
+                  <div className="access-person"><i>{initials(access.fullName)}</i><b>{access.fullName}</b></div>
+                  <div className="access-contact"><span>{access.email}</span><small>{access.phone || "Telefone não informado"}</small></div>
                   <select
-                    value={member.role}
-                    onChange={(event) => run(
-                      () => supabase.from("group_members").update({ role: event.target.value }).eq("group_id", areaId).eq("user_id", member.id),
-                      "Perfil de acesso atualizado.",
-                    )}
+                    value={access.accessRole}
+                    onChange={(event) => changeAccessRole(access, event.target.value as AccessRole)}
                   >
+                    <option value="administrator">Administrador</option>
+                    <option value="manager">Gestor</option>
                     <option value="member">Membro</option>
-                    <option value="admin">Admin da área</option>
                   </select>
-                  <button
-                    title={`Remover acesso de ${member.name}`}
-                    onClick={() => run(
-                      () => supabase.from("group_members").delete().eq("group_id", areaId).eq("user_id", member.id),
-                      "Acesso removido.",
-                    )}
-                  ><Trash2 /></button>
+                  <span className={`access-state ${access.userId ? "active" : "pending"}`}>
+                    {access.userId ? "Acesso ativo" : "Aguardando primeiro acesso"}
+                  </span>
+                  <div className="row-actions">
+                    <button title="Editar acesso" onClick={() => editAccess(access)}><Pencil /></button>
+                    <button title={`Remover acesso de ${access.fullName}`} onClick={() => removeAccess(access)}><Trash2 /></button>
+                  </div>
                 </div>
               ))}
-              {!accessMembers.length && <div className="config-empty">Nenhum usuário com acesso direto a esta área.</div>}
+              {!selectedAreaAccesses.length && <div className="config-empty">Nenhum acesso cadastrado para esta área.</div>}
             </div>
           </div>
         </div>
