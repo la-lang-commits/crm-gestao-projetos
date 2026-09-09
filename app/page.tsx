@@ -871,7 +871,13 @@ function Workspace({ user }: { user: any }) {
           project={detailProject}
           fields={areaFields}
           open={!!detailProject}
-          setOpen={(value) => !value && setDetailProject(null)}
+          setOpen={(value) => {
+            if (!value) {
+              setDetailProject(null);
+              setLabelProject("");
+              setLabelText("");
+            }
+          }}
           edit={(project) => {
             setDetailProject(null);
             setEditProject(project);
@@ -885,6 +891,25 @@ function Workspace({ user }: { user: any }) {
           commentDrafts={commentDrafts}
           setCommentDrafts={setCommentDrafts}
           addComment={addComment}
+          quickUpdate={async ({ status, sei, justification }) =>
+            updateProject({
+              id: detailProject.id,
+              catalogId: detailProject.catalogId,
+              sei,
+              openedAt: detailProject.openedAt,
+              status,
+              stage: detailProject.stage,
+              ownerId: detailProject.ownerId,
+              observation: detailProject.observation,
+              priority: detailProject.priority,
+              custom: Object.fromEntries(
+                detailProject.customValues.map((value) => [value.field_id, value.value]),
+              ),
+              justification,
+              subjectId: "",
+              advance: false,
+            })
+          }
         />
       )}
     </div>
@@ -1353,6 +1378,11 @@ type ProjectDetailProps = {
     React.SetStateAction<Record<string, string>>
   >;
   addComment: (id: string) => void;
+  quickUpdate: (value: {
+    status: Status;
+    sei: string;
+    justification: string;
+  }) => Promise<void>;
 };
 
 function ProjectDetail({
@@ -1370,6 +1400,7 @@ function ProjectDetail({
   commentDrafts,
   setCommentDrafts,
   addComment,
+  quickUpdate,
 }: ProjectDetailProps) {
   const show = (key: string) => fields.some((field) => field.key === key && field.visible);
   const sla = slaInfo(project);
@@ -1378,38 +1409,96 @@ function ProjectDetail({
     ? deadlineInfo(currentStep.dueAt)
     : { label: "Sem etapa ativa", tone: "neutral" };
   const currentStepLate = stepSla.tone === "late";
-  const flow = project.workflow.length
-    ? project.workflow
-    : stages.map((stageName, order) => ({
-        id: stageName,
-        stageName,
-        order,
-        status: order <= stages.indexOf(project.stage) ? "completed" : "pending",
-        completedLate: false,
-      }));
   const custom = project.customValues
     .map((value) => ({
       value: value.value,
       field: fields.find((field) => field.id === value.field_id),
     }))
     .filter((item) => item.field?.visible);
+  const [quickEdit, setQuickEdit] = useState<"status" | "sei" | null>(null);
+  const [quickStatus, setQuickStatus] = useState<Status>(project.status);
+  const [quickSei, setQuickSei] = useState(project.sei);
+  const [quickJustification, setQuickJustification] = useState("");
+  const [quickBusy, setQuickBusy] = useState(false);
+  const [quickError, setQuickError] = useState("");
+
+  async function saveQuickEdit() {
+    if (quickJustification.trim().length < 3) {
+      setQuickError("Informe uma justificativa para registrar a alteração.");
+      return;
+    }
+    setQuickBusy(true);
+    setQuickError("");
+    try {
+      await quickUpdate({
+        status: quickStatus,
+        sei: quickSei,
+        justification: quickJustification.trim(),
+      });
+      setQuickEdit(null);
+      setQuickJustification("");
+    } catch (error: any) {
+      setQuickError(error.message || "Não foi possível salvar a alteração.");
+    } finally {
+      setQuickBusy(false);
+    }
+  }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="process-dialog">
         <DialogHeader className="process-header">
-          <div>
+          <DialogTitle className="sr-only">Processo {ticket(project.ticket)}</DialogTitle>
+          <DialogDescription className="sr-only">Detalhes, prazos e histórico do processo.</DialogDescription>
+          <div className="process-header-start">
             <div className="process-kicker">
               <span>{ticket(project.ticket)}</span>
-              {project.sei && <small>SEI {project.sei}</small>}
             </div>
-            <DialogTitle>{project.name}</DialogTitle>
-            <DialogDescription>{project.demand}</DialogDescription>
+            {show("labels") && (
+              <div className="header-label-control">
+                <button
+                  className="header-label-trigger"
+                  onClick={() => setLabelProject(labelProject === project.id ? "" : project.id)}
+                  aria-expanded={labelProject === project.id}
+                >
+                  <Tag /> Etiqueta
+                </button>
+                {labelProject === project.id && (
+                  <div className="header-label-popover">
+                    <b>Etiquetas do ticket</b>
+                    <div className="label-chips">
+                      {project.labels.map((label) => (
+                        <span key={label.id}>
+                          <Tag />
+                          {label.label_text}
+                          <button
+                            title={`Remover etiqueta ${label.label_text}`}
+                            aria-label={`Remover etiqueta ${label.label_text}`}
+                            onClick={() => removeLabel(label.id)}
+                          ><X /></button>
+                        </span>
+                      ))}
+                      {!project.labels.length && <small>Nenhuma etiqueta adicionada.</small>}
+                    </div>
+                    <div className="label-add">
+                      <input
+                        autoFocus
+                        maxLength={120}
+                        value={labelText}
+                        onChange={(event) => setLabelText(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") addLabel(project.id);
+                        }}
+                        placeholder="Nome da etiqueta"
+                      />
+                      <button onClick={() => addLabel(project.id)}>Adicionar</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <div className="process-header-actions">
-            <span className={`pill ${statusConfig[project.status].className}`}>
-              {project.status}
-            </span>
             <button className="process-edit" onClick={() => edit(project)}>
               <Pencil />
               Atualizar processo
@@ -1417,58 +1506,98 @@ function ProjectDetail({
           </div>
         </DialogHeader>
 
-        <div className="process-layout">
-          <main className="process-main">
-            <section className="process-section">
-              <header>
-                <div>
-                  <b>Etapa atual</b>
-                  <span>{project.stage}</span>
-                </div>
-                {currentStep && (
-                  <small>{currentStep.assignee} · {formatSla(currentStep.slaValue, currentStep.slaUnit)}</small>
+        <div className="process-layout process-three-columns">
+          <section className="process-column process-ticket-column">
+            <header className="process-column-title">
+              <div><span>1</span><div><b>Informações do ticket</b><small>Dados preenchidos na abertura</small></div></div>
+              <button onClick={() => edit(project)} title="Editar informações do ticket" aria-label="Editar informações do ticket"><Pencil /></button>
+            </header>
+            <div className="ticket-primary-fields">
+              <article>
+                <b>Nome do projeto</b>
+                <span>{project.name}</span>
+              </article>
+              <article>
+                <b>Demanda</b>
+                <span>{project.demand}</span>
+              </article>
+              <article className="editable-ticket-field">
+                <b>Status</b>
+                <button onClick={() => {
+                  setQuickStatus(project.status);
+                  setQuickSei(project.sei);
+                  setQuickJustification("");
+                  setQuickError("");
+                  setQuickEdit("status");
+                }}>
+                  <span className={`pill ${statusConfig[project.status].className}`}>{project.status}</span>
+                  <Pencil />
+                </button>
+              </article>
+              <article className="editable-ticket-field">
+                <b>Nº do SEI</b>
+                <button onClick={() => {
+                  setQuickStatus(project.status);
+                  setQuickSei(project.sei);
+                  setQuickJustification("");
+                  setQuickError("");
+                  setQuickEdit("sei");
+                }}>
+                  <span>{project.sei || "Não informado"}</span>
+                  <Pencil />
+                </button>
+              </article>
+            </div>
+            {quickEdit && (
+              <div className="quick-ticket-editor">
+                <header>
+                  <b>{quickEdit === "status" ? "Editar status" : "Editar nº do SEI"}</b>
+                  <button onClick={() => setQuickEdit(null)} aria-label="Fechar edição"><X /></button>
+                </header>
+                {quickEdit === "status" ? (
+                  <label>Status
+                    <select value={quickStatus} onChange={(event) => setQuickStatus(event.target.value as Status)}>
+                      {statuses.map((status) => <option key={status}>{status}</option>)}
+                    </select>
+                  </label>
+                ) : (
+                  <label>Nº do SEI
+                    <input autoFocus value={quickSei} onChange={(event) => setQuickSei(event.target.value)} placeholder="Informe o número do SEI" />
+                  </label>
                 )}
+                <label>Justificativa da alteração
+                  <textarea value={quickJustification} onChange={(event) => setQuickJustification(event.target.value)} placeholder="Explique por que este dado foi alterado" />
+                </label>
+                {quickError && <small className="quick-edit-error">{quickError}</small>}
+                <button className="quick-edit-save" disabled={quickBusy} onClick={saveQuickEdit}>
+                  {quickBusy ? <Loader2 /> : null} Salvar alteração
+                </button>
+              </div>
+            )}
+            <div className="ticket-secondary-fields">
+              {show("openedAt") && (
+                <div><b>Data de abertura</b><span>{new Date(project.openedAt + "T12:00:00").toLocaleDateString("pt-BR")}</span></div>
+              )}
+              <div><b>Prioridade</b><span>{project.priority}</span></div>
+              {custom.map((item) => (
+                <div key={item.field!.id}><b>{item.field!.label}</b><span>{item.value || "—"}</span></div>
+              ))}
+            </div>
+          </section>
+
+          <main className="process-column process-main process-sla-column">
+            <section className="process-section process-stage-summary">
+              <header>
+                <div><span className="division-number">2</span><div><b>Etapa atual</b><small>Andamento e prazos do processo</small></div></div>
+                <span>{project.stage}</span>
               </header>
-              {show("stage") && (
-                <div className="stage-flow process-flow">
-                  {flow.map((step, index) => (
-                    <div
-                      className={`${step.status === "current" || step.status === "completed" ? "active" : ""} ${step.completedLate ? "late-step" : ""}`}
-                      key={step.id}
-                    >
-                      <i />
-                      {index < flow.length - 1 && <span />}
-                      <small>{step.stageName}</small>
-                    </div>
-                  ))}
+              {currentStep && (
+                <div className="current-stage-owner">
+                  <span><Users />Responsável atual</span>
+                  <b>{currentStep.assignee}</b>
+                  <small>{formatSla(currentStep.slaValue, currentStep.slaUnit)} · {stepSla.label}</small>
                 </div>
               )}
-            </section>
-
-            <section className="process-section">
-              <div className="section-title-row">
-                <div>
-                  <h3>Informações do ticket</h3>
-                  <p>Confira tudo o que foi preenchido na abertura.</p>
-                </div>
-                <button onClick={() => edit(project)}><Pencil /> Corrigir informações</button>
-              </div>
-              <div className="process-fields">
-                <div><b>Nº do ticket</b><span>{ticket(project.ticket)}</span></div>
-                <div><b>Nº do SEI</b><span>{project.sei || "Não informado"}</span></div>
-                <div><b>Projeto</b><span>{project.name}</span></div>
-                <div><b>Demanda</b><span>{project.demand}</span></div>
-                {show("openedAt") && (
-                  <div><b>Data de abertura</b><span>{new Date(project.openedAt + "T12:00:00").toLocaleDateString("pt-BR")}</span></div>
-                )}
-                <div><b>Status</b><span>{project.status}</span></div>
-                {show("ownerId") && <div><b>Responsável</b><span>{project.owner}</span></div>}
-                {show("stage") && <div><b>Etapa</b><span>{project.stage}</span></div>}
-                <div><b>Prioridade</b><span>{project.priority}</span></div>
-                {custom.map((item) => (
-                  <div key={item.field!.id}><b>{item.field!.label}</b><span>{item.value || "—"}</span></div>
-                ))}
-              </div>
             </section>
 
             <section className="process-section">
@@ -1513,46 +1642,15 @@ function ProjectDetail({
 
             {show("observation") && (
               <section className="process-section">
-                <h3>Observação</h3>
+                <h3>Observações</h3>
                 <p className="process-observation">{project.observation || "Nenhuma observação registrada."}</p>
-              </section>
-            )}
-
-            {show("labels") && (
-              <section className="process-section">
-                <h3>Etiquetas</h3>
-                <div className="label-line process-labels">
-                  <div className="label-chips">
-                    {project.labels.map((label) => (
-                      <span key={label.id}>
-                        <Tag />
-                        {label.label_text}
-                        <button
-                          title={`Remover etiqueta ${label.label_text}`}
-                          aria-label={`Remover etiqueta ${label.label_text}`}
-                          onClick={() => removeLabel(label.id)}
-                        ><X /></button>
-                      </span>
-                    ))}
-                    {!project.labels.length && <small>Sem etiquetas</small>}
-                  </div>
-                  {labelProject === project.id ? (
-                    <div className="label-add">
-                      <input autoFocus maxLength={120} value={labelText} onChange={(event) => setLabelText(event.target.value)} placeholder="Nova etiqueta" />
-                      <button onClick={() => addLabel(project.id)}>Adicionar</button>
-                      <button onClick={() => setLabelProject("")}><X /></button>
-                    </div>
-                  ) : (
-                    <button className="add-label" onClick={() => setLabelProject(project.id)}><Plus /> Etiqueta</button>
-                  )}
-                </div>
               </section>
             )}
           </main>
 
           <aside className="process-activity">
             <header>
-              <div><MessageCircle /><b>Comentários e histórico</b></div>
+              <div><span className="division-number">3</span><MessageCircle /><b>Comentários e histórico</b></div>
               <small>{project.events.length} registros</small>
             </header>
             {currentStepLate && (
