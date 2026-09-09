@@ -11,8 +11,10 @@ import {
   CircleDot,
   Clock3,
   Columns3,
+  Download,
   Eye,
   EyeOff,
+  FileText,
   FolderKanban,
   LayoutDashboard,
   List,
@@ -23,6 +25,7 @@ import {
   Menu,
   MessageCircle,
   MoreHorizontal,
+  Paperclip,
   Pencil,
   Plus,
   Search,
@@ -32,6 +35,7 @@ import {
   Tag,
   Trash2,
   TrendingUp,
+  Upload,
   Users,
   X,
   XCircle,
@@ -66,6 +70,16 @@ type AccessEntry = {
   createdAt: string;
 };
 type Label = { id: string; label_text: string; color: string };
+type Attachment = {
+  id: string;
+  storagePath: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedBy: string;
+  uploader: string;
+  createdAt: string;
+};
 type Event = {
   id: string;
   eventType: string;
@@ -140,6 +154,7 @@ type Project = {
   observation: string;
   progress: number;
   labels: Label[];
+  attachments: Attachment[];
   events: Event[];
   customValues: { field_id: string; value: string }[];
 };
@@ -190,6 +205,11 @@ const slaUnitLabels: Record<SlaUnit, [string, string]> = {
 };
 const formatSla = (value: number, unit: SlaUnit) =>
   `${value} ${slaUnitLabels[unit][value === 1 ? 0 : 1]}`;
+const formatBytes = (bytes: number) => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+};
 const deadlineInfo = (dueAt: string | null) => {
   if (!dueAt) return { label: "Prazo não iniciado", tone: "neutral" };
   const hours = Math.ceil((new Date(dueAt).getTime() - Date.now()) / 3600000);
@@ -413,7 +433,7 @@ function Workspace({ user }: { user: any }) {
       supabase
         .from("projects")
         .select(
-          "id,catalog_id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,updated_at,sla_days,sla_value,sla_unit,sla_due_at,has_delayed_step,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),workflow:project_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,status,started_at,due_at,completed_at,completed_late,assignee:profiles!project_workflow_steps_assignee_id_fkey(full_name)),labels:project_labels(id,label_text,color),events:project_events(id,event_type,justification,created_at,from_stage,to_stage,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),from_owner:profiles!project_events_from_owner_id_fkey(full_name),to_owner:profiles!project_events_to_owner_id_fkey(full_name)),custom_values:project_field_values(field_id,value)",
+          "id,catalog_id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,updated_at,sla_days,sla_value,sla_unit,sla_due_at,has_delayed_step,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),workflow:project_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,status,started_at,due_at,completed_at,completed_late,assignee:profiles!project_workflow_steps_assignee_id_fkey(full_name)),labels:project_labels(id,label_text,color),attachments:project_attachments(id,storage_path,file_name,mime_type,size_bytes,uploaded_by,created_at,uploader:profiles!project_attachments_uploaded_by_fkey(full_name)),events:project_events(id,event_type,justification,created_at,from_stage,to_stage,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),from_owner:profiles!project_events_from_owner_id_fkey(full_name),to_owner:profiles!project_events_to_owner_id_fkey(full_name)),custom_values:project_field_values(field_id,value)",
         )
         .order("updated_at", { ascending: false }),
       supabase
@@ -558,6 +578,21 @@ function Workspace({ user }: { user: any }) {
           observation: p.observation || "",
           progress: p.progress,
           labels: p.labels || [],
+          attachments: (p.attachments || [])
+            .map((attachment: any) => ({
+              id: attachment.id,
+              storagePath: attachment.storage_path,
+              fileName: attachment.file_name,
+              mimeType: attachment.mime_type || "application/octet-stream",
+              sizeBytes: attachment.size_bytes,
+              uploadedBy: attachment.uploaded_by,
+              uploader: attachment.uploader?.full_name || "Usuário",
+              createdAt: attachment.created_at,
+            }))
+            .sort(
+              (a: Attachment, b: Attachment) =>
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+            ),
           events: (p.events || [])
             .map((event: any) => ({
               id: event.id,
@@ -699,6 +734,64 @@ function Workspace({ user }: { user: any }) {
     if (error) return setError(error.message);
     setCommentDrafts((drafts) => ({ ...drafts, [projectId]: "" }));
     setNotice("Comentário registrado no histórico.");
+    await load();
+  }
+  async function uploadAttachment(project: Project, file: File) {
+    if (file.size > 10 * 1024 * 1024)
+      throw new Error("O anexo deve ter no máximo 10 MB.");
+    const safeName =
+      file.name
+        .normalize("NFKD")
+        .replace(/[^a-zA-Z0-9._-]+/g, "-")
+        .replace(/-+/g, "-")
+        .slice(-120) || "arquivo";
+    const storagePath = `${project.areaId}/${project.id}/${crypto.randomUUID()}-${safeName}`;
+    const bucket = supabase.storage.from("project-attachments");
+    const { error: uploadError } = await bucket.upload(storagePath, file, {
+      contentType: file.type || "application/octet-stream",
+      upsert: false,
+    });
+    if (uploadError) throw uploadError;
+    const { error: metadataError } = await supabase
+      .from("project_attachments")
+      .insert({
+        project_id: project.id,
+        group_id: project.areaId,
+        storage_path: storagePath,
+        file_name: file.name,
+        mime_type: file.type || "application/octet-stream",
+        size_bytes: file.size,
+        uploaded_by: user.id,
+      });
+    if (metadataError) {
+      await bucket.remove([storagePath]);
+      throw metadataError;
+    }
+    setNotice("Anexo incluído com sucesso.");
+    await load();
+  }
+  async function downloadAttachment(attachment: Attachment) {
+    const { data, error } = await supabase.storage
+      .from("project-attachments")
+      .download(attachment.storagePath);
+    if (error) throw error;
+    const url = URL.createObjectURL(data);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = attachment.fileName;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  async function removeAttachment(attachment: Attachment) {
+    const bucket = supabase.storage.from("project-attachments");
+    const { error: storageError } = await bucket.remove([attachment.storagePath]);
+    if (storageError) throw storageError;
+    const { error: metadataError } = await supabase
+      .from("project_attachments")
+      .delete()
+      .eq("id", attachment.id);
+    if (metadataError) throw metadataError;
+    setNotice("Anexo removido.");
     await load();
   }
   return (
@@ -904,6 +997,7 @@ function Workspace({ user }: { user: any }) {
         <ProjectDetail
           project={detailProject}
           fields={areaFields}
+          members={areaMembers}
           open={!!detailProject}
           setOpen={(value) => {
             if (!value) {
@@ -925,7 +1019,7 @@ function Workspace({ user }: { user: any }) {
           commentDrafts={commentDrafts}
           setCommentDrafts={setCommentDrafts}
           addComment={addComment}
-          quickUpdate={async ({ status, sei, justification }) =>
+          quickUpdate={async ({ status, sei, ownerId, justification }) =>
             updateProject({
               id: detailProject.id,
               catalogId: detailProject.catalogId,
@@ -933,7 +1027,7 @@ function Workspace({ user }: { user: any }) {
               openedAt: detailProject.openedAt,
               status,
               stage: detailProject.stage,
-              ownerId: detailProject.ownerId,
+              ownerId,
               observation: detailProject.observation,
               priority: detailProject.priority,
               custom: Object.fromEntries(
@@ -944,6 +1038,9 @@ function Workspace({ user }: { user: any }) {
               advance: false,
             })
           }
+          uploadAttachment={uploadAttachment}
+          downloadAttachment={downloadAttachment}
+          removeAttachment={removeAttachment}
         />
       )}
     </div>
@@ -1398,6 +1495,7 @@ function TicketCards({
 type ProjectDetailProps = {
   project: Project;
   fields: FieldDef[];
+  members: Member[];
   open: boolean;
   setOpen: (open: boolean) => void;
   edit: (project: Project) => void;
@@ -1415,13 +1513,18 @@ type ProjectDetailProps = {
   quickUpdate: (value: {
     status: Status;
     sei: string;
+    ownerId: string;
     justification: string;
   }) => Promise<void>;
+  uploadAttachment: (project: Project, file: File) => Promise<void>;
+  downloadAttachment: (attachment: Attachment) => Promise<void>;
+  removeAttachment: (attachment: Attachment) => Promise<void>;
 };
 
 function ProjectDetail({
   project,
   fields,
+  members,
   open,
   setOpen,
   edit,
@@ -1435,6 +1538,9 @@ function ProjectDetail({
   setCommentDrafts,
   addComment,
   quickUpdate,
+  uploadAttachment,
+  downloadAttachment,
+  removeAttachment,
 }: ProjectDetailProps) {
   const show = (key: string) => fields.some((field) => field.key === key && field.visible);
   const sla = slaInfo(project);
@@ -1449,12 +1555,22 @@ function ProjectDetail({
       field: fields.find((field) => field.id === value.field_id),
     }))
     .filter((item) => item.field?.visible);
-  const [quickEdit, setQuickEdit] = useState<"status" | "sei" | null>(null);
+  const [quickEdit, setQuickEdit] = useState<"status" | "sei" | "owner" | null>(null);
   const [quickStatus, setQuickStatus] = useState<Status>(project.status);
   const [quickSei, setQuickSei] = useState(project.sei);
+  const [quickOwnerId, setQuickOwnerId] = useState(project.ownerId);
   const [quickJustification, setQuickJustification] = useState("");
   const [quickBusy, setQuickBusy] = useState(false);
   const [quickError, setQuickError] = useState("");
+  const [attachmentBusy, setAttachmentBusy] = useState("");
+  const timelineStatuses: Status[] = [
+    "Aberto",
+    "Pendente",
+    "Em andamento",
+    "Concluído",
+    "Cancelado",
+  ];
+  const timelineIndex = timelineStatuses.indexOf(project.status);
 
   async function saveQuickEdit() {
     if (quickJustification.trim().length < 3) {
@@ -1467,6 +1583,7 @@ function ProjectDetail({
       await quickUpdate({
         status: quickStatus,
         sei: quickSei,
+        ownerId: quickOwnerId,
         justification: quickJustification.trim(),
       });
       setQuickEdit(null);
@@ -1532,12 +1649,6 @@ function ProjectDetail({
               </div>
             )}
           </div>
-          <div className="process-header-actions">
-            <button className="process-edit" onClick={() => edit(project)}>
-              <Pencil />
-              Atualizar processo
-            </button>
-          </div>
         </DialogHeader>
 
         <div className="process-layout process-three-columns">
@@ -1560,6 +1671,7 @@ function ProjectDetail({
                 <button onClick={() => {
                   setQuickStatus(project.status);
                   setQuickSei(project.sei);
+                  setQuickOwnerId(project.ownerId);
                   setQuickJustification("");
                   setQuickError("");
                   setQuickEdit("status");
@@ -1573,6 +1685,7 @@ function ProjectDetail({
                 <button onClick={() => {
                   setQuickStatus(project.status);
                   setQuickSei(project.sei);
+                  setQuickOwnerId(project.ownerId);
                   setQuickJustification("");
                   setQuickError("");
                   setQuickEdit("sei");
@@ -1582,7 +1695,7 @@ function ProjectDetail({
                 </button>
               </article>
             </div>
-            {quickEdit && (
+            {quickEdit && quickEdit !== "owner" && (
               <div className="quick-ticket-editor">
                 <header>
                   <b>{quickEdit === "status" ? "Editar status" : "Editar nº do SEI"}</b>
@@ -1625,13 +1738,51 @@ function ProjectDetail({
                 <div><span className="division-number">2</span><div><b>Etapa atual</b><small>Andamento e prazos do processo</small></div></div>
                 <span>{project.stage}</span>
               </header>
-              {currentStep && (
-                <div className="current-stage-owner">
-                  <span><Users />Responsável atual</span>
-                  <b>{currentStep.assignee}</b>
-                  <small>{formatSla(currentStep.slaValue, currentStep.slaUnit)} · {stepSla.label}</small>
+              <button className="current-stage-owner" onClick={() => {
+                setQuickStatus(project.status);
+                setQuickSei(project.sei);
+                setQuickOwnerId(project.ownerId);
+                setQuickJustification("");
+                setQuickError("");
+                setQuickEdit("owner");
+              }}>
+                <span><Users />Responsável atual</span>
+                <b>{project.owner}</b>
+                <small>{currentStep ? `${formatSla(currentStep.slaValue, currentStep.slaUnit)} · ${stepSla.label}` : "Sem etapa de SLA ativa"}</small>
+                <Pencil />
+              </button>
+              {quickEdit === "owner" && (
+                <div className="quick-ticket-editor owner-quick-editor">
+                  <header>
+                    <b>Alterar responsável atual</b>
+                    <button onClick={() => setQuickEdit(null)} aria-label="Fechar edição"><X /></button>
+                  </header>
+                  <label>Responsável
+                    <select value={quickOwnerId} onChange={(event) => setQuickOwnerId(event.target.value)}>
+                      {members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
+                    </select>
+                  </label>
+                  <label>Justificativa da transferência
+                    <textarea value={quickJustification} onChange={(event) => setQuickJustification(event.target.value)} placeholder="Explique por que o processo será transferido" />
+                  </label>
+                  {quickError && <small className="quick-edit-error">{quickError}</small>}
+                  <button className="quick-edit-save" disabled={quickBusy || !quickOwnerId} onClick={saveQuickEdit}>
+                    {quickBusy ? <Loader2 /> : null} Salvar transferência
+                  </button>
                 </div>
               )}
+              <div className="status-pipeline" aria-label={`Esteira do processo: ${project.status}`}>
+                <div className="status-pipeline-title"><Activity /><span><b>Esteira do processo</b><small>Atualizada automaticamente pelo status</small></span></div>
+                <div className="status-pipeline-track">
+                  {timelineStatuses.map((status, index) => {
+                    const cancelled = project.status === "Cancelado";
+                    const state = cancelled
+                      ? status === "Cancelado" ? "current cancelled" : ""
+                      : status === "Cancelado" ? "" : index < timelineIndex ? "completed" : index === timelineIndex ? "current" : "";
+                    return <div className={`status-pipeline-step ${state}`} key={status}><i>{state.includes("completed") ? <CheckCircle2 /> : <span />}</i><small>{status}</small></div>;
+                  })}
+                </div>
+              </div>
             </section>
 
             <section className="process-section">
@@ -1674,12 +1825,54 @@ function ProjectDetail({
               )}
             </section>
 
-            {show("observation") && (
-              <section className="process-section">
-                <h3>Observações</h3>
-                <p className="process-observation">{project.observation || "Nenhuma observação registrada."}</p>
-              </section>
-            )}
+            <section className="process-section attachments-section">
+              <div className="section-title-row">
+                <div><h3>Anexos</h3><p>Arquivos privados deste ticket.</p></div>
+                <label className={`attachment-upload ${attachmentBusy === "upload" ? "busy" : ""}`}>
+                  {attachmentBusy === "upload" ? <Loader2 /> : <Upload />} Adicionar anexo
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx,.xls,.xlsx,.txt,.csv"
+                    disabled={!!attachmentBusy}
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (!file) return;
+                      setAttachmentBusy("upload");
+                      setQuickError("");
+                      try { await uploadAttachment(project, file); }
+                      catch (error: any) { setQuickError(error.message || "Não foi possível enviar o anexo."); }
+                      finally { setAttachmentBusy(""); }
+                    }}
+                  />
+                </label>
+              </div>
+              {quickError && !quickEdit && <small className="quick-edit-error">{quickError}</small>}
+              {project.attachments.length ? (
+                <div className="attachment-list">
+                  {project.attachments.map((attachment) => (
+                    <article key={attachment.id}>
+                      <FileText />
+                      <div><b>{attachment.fileName}</b><small>{formatBytes(attachment.sizeBytes)} · {attachment.uploader} · {new Date(attachment.createdAt).toLocaleDateString("pt-BR")}</small></div>
+                      <button title="Baixar anexo" disabled={!!attachmentBusy} onClick={async () => {
+                        setAttachmentBusy(attachment.id);
+                        try { await downloadAttachment(attachment); }
+                        catch (error: any) { setQuickError(error.message || "Não foi possível baixar o anexo."); }
+                        finally { setAttachmentBusy(""); }
+                      }}>{attachmentBusy === attachment.id ? <Loader2 /> : <Download />}</button>
+                      <button className="delete" title="Excluir anexo" disabled={!!attachmentBusy} onClick={async () => {
+                        setAttachmentBusy(attachment.id);
+                        try { await removeAttachment(attachment); }
+                        catch (error: any) { setQuickError(error.message || "Não foi possível excluir o anexo."); }
+                        finally { setAttachmentBusy(""); }
+                      }}><Trash2 /></button>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="attachment-empty"><Paperclip /><span>Nenhum anexo incluído.</span></div>
+              )}
+            </section>
           </main>
 
           <aside className="process-activity">
