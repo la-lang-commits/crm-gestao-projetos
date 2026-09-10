@@ -1768,6 +1768,8 @@
 }
 
 .process-activity {
+  align-self: stretch;
+  min-height: 100%;
   padding: 20px;
   border-left: 1px solid #e4ded3;
   background: #fff;
@@ -3478,6 +3480,46 @@
 
 .process-activity .activity-list {
   max-height: none;
+  background: #fff;
+}
+
+.process-activity .activity-item {
+  background: #fff;
+}
+
+.activity-item-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.activity-item-title > b {
+  color: #34312d;
+  font-size: 12px;
+}
+
+.activity-delete {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #9a716b;
+}
+
+.activity-delete:hover,
+.activity-delete:focus-visible {
+  background: #f5e4e1;
+  color: #a14940;
+  outline: none;
+}
+
+.activity-delete svg {
+  width: 14px;
 }
 
 @media (max-width: 1000px) {

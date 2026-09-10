@@ -94,6 +94,7 @@ type Event = {
   eventType: string;
   justification: string;
   created_at: string;
+  actorUserId: string;
   actor?: { full_name: string };
   subject?: { full_name: string };
   fromOwner?: { full_name: string };
@@ -480,7 +481,7 @@ function Workspace({ user }: { user: any }) {
       supabase
         .from("projects")
         .select(
-          "id,catalog_id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,updated_at,sla_days,sla_value,sla_unit,sla_due_at,has_delayed_step,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),workflow:project_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,status,started_at,due_at,completed_at,completed_late,assignee:profiles!project_workflow_steps_assignee_id_fkey(full_name)),labels:project_labels(id,label_text,color),attachments:project_attachments(id,storage_path,file_name,mime_type,size_bytes,uploaded_by,created_at,uploader:profiles!project_attachments_uploaded_by_fkey(full_name)),events:project_events(id,event_type,justification,created_at,from_stage,to_stage,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),from_owner:profiles!project_events_from_owner_id_fkey(full_name),to_owner:profiles!project_events_to_owner_id_fkey(full_name)),custom_values:project_field_values(field_id,value)",
+          "id,catalog_id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,updated_at,sla_days,sla_value,sla_unit,sla_due_at,has_delayed_step,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),workflow:project_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,status,started_at,due_at,completed_at,completed_late,assignee:profiles!project_workflow_steps_assignee_id_fkey(full_name)),labels:project_labels(id,label_text,color),attachments:project_attachments(id,storage_path,file_name,mime_type,size_bytes,uploaded_by,created_at,uploader:profiles!project_attachments_uploaded_by_fkey(full_name)),events:project_events(id,event_type,justification,created_at,actor_user_id,from_stage,to_stage,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),from_owner:profiles!project_events_from_owner_id_fkey(full_name),to_owner:profiles!project_events_to_owner_id_fkey(full_name)),custom_values:project_field_values(field_id,value)",
         )
         .order("updated_at", { ascending: false }),
       supabase
@@ -646,6 +647,7 @@ function Workspace({ user }: { user: any }) {
               eventType: event.event_type,
               justification: event.justification,
               created_at: event.created_at,
+              actorUserId: event.actor_user_id,
               actor: event.actor,
               subject: event.subject,
               fromOwner: event.from_owner,
@@ -817,6 +819,20 @@ function Workspace({ user }: { user: any }) {
     if (error) return setError(error.message);
     setCommentDrafts((drafts) => ({ ...drafts, [projectId]: "" }));
     setNotice("Comentário registrado no histórico.");
+    await load();
+  }
+  async function removeComment(eventId: string) {
+    const { data, error } = await supabase
+      .from("project_events")
+      .delete()
+      .eq("id", eventId)
+      .eq("event_type", "comentario")
+      .select("id")
+      .single();
+    if (error) throw error;
+    if (!data)
+      throw new Error("Este comentário não pode ser excluído por este acesso.");
+    setNotice("Comentário excluído.");
     await load();
   }
   async function uploadAttachment(project: Project, file: File) {
@@ -1104,6 +1120,11 @@ function Workspace({ user }: { user: any }) {
           commentDrafts={commentDrafts}
           setCommentDrafts={setCommentDrafts}
           addComment={addComment}
+          removeComment={removeComment}
+          canDeleteComment={(event) =>
+            event.eventType === "comentario" &&
+            event.actorUserId === user.id
+          }
           quickUpdate={async ({ status, sei, ownerId, justification }) =>
             updateProject({
               id: detailProject.id,
@@ -1675,6 +1696,8 @@ type ProjectDetailProps = {
     React.SetStateAction<Record<string, string>>
   >;
   addComment: (id: string) => void;
+  removeComment: (eventId: string) => Promise<void>;
+  canDeleteComment: (event: Event) => boolean;
   quickUpdate: (value: {
     status: Status;
     sei: string;
@@ -1703,6 +1726,8 @@ function ProjectDetail({
   commentDrafts,
   setCommentDrafts,
   addComment,
+  removeComment,
+  canDeleteComment,
   quickUpdate,
   uploadAttachment,
   downloadAttachment,
@@ -1730,6 +1755,9 @@ function ProjectDetail({
   const [quickBusy, setQuickBusy] = useState(false);
   const [quickError, setQuickError] = useState("");
   const [attachmentBusy, setAttachmentBusy] = useState("");
+  const [commentToDelete, setCommentToDelete] = useState<Event | null>(null);
+  const [commentDeleteBusy, setCommentDeleteBusy] = useState(false);
+  const [commentDeleteError, setCommentDeleteError] = useState("");
   const timelineStatuses: Status[] = [
     "Aberto",
     "Pendente",
@@ -1763,6 +1791,7 @@ function ProjectDetail({
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="process-dialog">
         <DialogHeader className="process-header">
@@ -2066,7 +2095,22 @@ function ProjectDetail({
                   <article className="activity-item" key={event.id}>
                     <i>{event.eventType === "comentario" ? <MessageCircle /> : <Activity />}</i>
                     <div>
-                      <b>{eventTitle(event)}</b>
+                      <div className="activity-item-title">
+                        <b>{eventTitle(event)}</b>
+                        {canDeleteComment(event) && (
+                          <button
+                            className="activity-delete"
+                            title="Excluir comentário"
+                            aria-label="Excluir comentário"
+                            onClick={() => {
+                              setCommentDeleteError("");
+                              setCommentToDelete(event);
+                            }}
+                          >
+                            <Trash2 />
+                          </button>
+                        )}
+                      </div>
                       <p>{event.justification}</p>
                       <small>
                         {event.subject?.full_name && event.subject.full_name !== event.actor?.full_name
@@ -2085,6 +2129,56 @@ function ProjectDetail({
         </div>
       </DialogContent>
     </Dialog>
+    <AlertDialog
+      open={!!commentToDelete}
+      onOpenChange={(dialogOpen) => {
+        if (!dialogOpen && !commentDeleteBusy) setCommentToDelete(null);
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Excluir comentário?</AlertDialogTitle>
+          <AlertDialogDescription>
+            O comentário escrito será excluído permanentemente. Os registros
+            automáticos do processo não podem ser apagados.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {commentDeleteError && (
+          <div className="quick-edit-error">{commentDeleteError}</div>
+        )}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={commentDeleteBusy}>
+            Cancelar
+          </AlertDialogCancel>
+          <AlertDialogAction
+            className="delete-confirm"
+            disabled={commentDeleteBusy}
+            onClick={async (event) => {
+              event.preventDefault();
+              if (!commentToDelete) return;
+              setCommentDeleteBusy(true);
+              setCommentDeleteError("");
+              try {
+                await removeComment(commentToDelete.id);
+                setCommentToDelete(null);
+              } catch (error: unknown) {
+                setCommentDeleteError(
+                  error instanceof Error
+                    ? error.message
+                    : "Não foi possível excluir o comentário.",
+                );
+              } finally {
+                setCommentDeleteBusy(false);
+              }
+            }}
+          >
+            {commentDeleteBusy ? <Loader2 className="spin" /> : <Trash2 />}
+            {commentDeleteBusy ? "Excluindo..." : "Excluir comentário"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 }
 
