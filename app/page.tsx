@@ -1737,7 +1737,7 @@ function ProjectDetail({
             </div>
           </section>
 
-          <main className="process-column process-main process-sla-column">
+          <section className="process-column process-main process-sla-column">
             <section className="process-section process-stage-summary">
               <header>
                 <div><span className="division-number">2</span><div><b>Etapa atual</b><small>Andamento e prazos do processo</small></div></div>
@@ -1880,7 +1880,7 @@ function ProjectDetail({
                 <div className="attachment-empty"><Paperclip /><span>Nenhum anexo incluído.</span></div>
               )}
             </section>
-          </main>
+          </section>
 
           <aside className="process-activity">
             <header>

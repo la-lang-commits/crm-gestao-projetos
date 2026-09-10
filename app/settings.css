@@ -1507,9 +1507,9 @@
 }
 
 .process-dialog {
-  width: min(1240px, calc(100vw - 48px));
-  max-width: 1240px !important;
-  height: min(86vh, 820px);
+  width: min(1320px, calc(100vw - 32px));
+  max-width: 1320px !important;
+  height: min(88vh, 850px);
   padding: 0 !important;
   gap: 0 !important;
   overflow: hidden;
@@ -1666,19 +1666,29 @@
 .process-layout {
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(250px, 0.8fr) minmax(420px, 1.35fr) minmax(320px, 1fr);
-  overflow: hidden;
+  grid-template-columns: minmax(270px, .8fr) minmax(0, 1.3fr) minmax(340px, 1fr);
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .process-column,
 .process-activity {
   min-height: 0;
-  overflow-y: auto;
+  overflow: visible;
+}
+
+.process-layout::-webkit-scrollbar {
+  width: 7px;
+}
+
+.process-layout::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #c7cbc7;
 }
 
 .process-main,
 .process-column {
-  padding: 18px 20px 28px;
+  padding: 18px 20px 26px;
 }
 
 .process-ticket-column {
@@ -1687,6 +1697,8 @@
 }
 
 .process-sla-column {
+  width: auto;
+  margin-left: 0;
   background: #f7f5f0;
 }
 
@@ -1759,22 +1771,32 @@
 
 .ticket-primary-fields {
   display: grid;
-  gap: 10px;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid #e5dfd4;
+  border-radius: 10px;
+  background: #fff;
 }
 
 .ticket-primary-fields article {
   display: grid;
-  gap: 6px;
+  gap: 5px;
+  min-height: 72px;
   padding: 13px 14px;
-  border: 1px solid #e5dfd4;
-  border-radius: 9px;
-  background: #fff;
+  border: 0;
+  border-bottom: 1px solid #ebe6dc;
+  border-radius: 0;
+  background: transparent;
+}
+
+.ticket-primary-fields article:last-child {
+  border-bottom: 0;
 }
 
 .ticket-primary-fields article > b,
 .ticket-secondary-fields b {
   color: #8a8176;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: .04em;
   text-transform: uppercase;
 }
@@ -1782,7 +1804,7 @@
 .ticket-primary-fields article > span,
 .ticket-secondary-fields span {
   color: #3f4743;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.45;
 }
 
@@ -1817,7 +1839,7 @@
 .ticket-secondary-fields {
   display: grid;
   gap: 0;
-  margin-top: 16px;
+  margin-top: 12px;
   border-top: 1px solid #e5dfd4;
 }
 
@@ -1913,8 +1935,10 @@
 }
 
 .ticket-secondary-fields > div {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   padding: 11px 2px;
   border-bottom: 1px solid #ebe6dc;
 }
@@ -2141,8 +2165,8 @@
 }
 
 .process-section {
-  padding: 18px;
-  margin-bottom: 14px;
+  padding: 16px;
+  margin-bottom: 12px;
   border: 1px solid #e4ded3;
   border-radius: 10px;
   background: #fff;
