@@ -2026,7 +2026,7 @@
   position: relative;
   width: 100%;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) 28px;
   align-items: center;
   gap: 4px 12px;
   margin-top: 14px;
@@ -2055,8 +2055,13 @@
 }
 
 .current-stage-owner b {
+  grid-column: 1 / -1;
+  min-width: 0;
+  overflow: hidden;
   color: #285e59;
   font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .current-stage-owner small {
@@ -2066,9 +2071,10 @@
 }
 
 .current-stage-owner > svg {
-  position: absolute;
-  top: 10px;
-  right: 10px;
+  position: static;
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: end;
   width: 13px;
   color: #78928a;
 }

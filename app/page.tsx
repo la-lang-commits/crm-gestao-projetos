@@ -219,18 +219,54 @@ const formatBytes = (bytes: number) => {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 };
-const deadlineInfo = (dueAt: string | null) => {
+const countBusinessDays = (from: Date, to: Date) => {
+  const start = new Date(from);
+  const end = new Date(to);
+  start.setHours(12, 0, 0, 0);
+  end.setHours(12, 0, 0, 0);
+  let total = 0;
+  for (const cursor = new Date(start); cursor < end; ) {
+    cursor.setDate(cursor.getDate() + 1);
+    if (cursor.getDay() !== 0 && cursor.getDay() !== 6) total += 1;
+  }
+  return total;
+};
+const remainingSlaUnits = (from: Date, to: Date, unit: SlaUnit) => {
+  const milliseconds = Math.max(0, to.getTime() - from.getTime());
+  if (unit === "hours") return Math.ceil(milliseconds / 3600000);
+  if (unit === "months")
+    return Math.ceil(milliseconds / (30 * 24 * 3600000));
+  if (unit === "business_days") return countBusinessDays(from, to);
+  const start = new Date(from);
+  const end = new Date(to);
+  start.setHours(12, 0, 0, 0);
+  end.setHours(12, 0, 0, 0);
+  return Math.max(0, Math.ceil((end.getTime() - start.getTime()) / 86400000));
+};
+const deadlineInfo = (
+  dueAt: string | null,
+  unit: SlaUnit = "calendar_days",
+) => {
   if (!dueAt) return { label: "Prazo não iniciado", tone: "neutral" };
-  const hours = Math.ceil((new Date(dueAt).getTime() - Date.now()) / 3600000);
+  const due = new Date(dueAt);
+  if (Number.isNaN(due.getTime()))
+    return { label: "Prazo não informado", tone: "neutral" };
+  const now = new Date();
+  const hours = Math.ceil((due.getTime() - now.getTime()) / 3600000);
   if (hours < 0)
     return {
-      label: `Atrasado há ${Math.max(1, Math.ceil(Math.abs(hours) / 24))}d`,
+      label: `Atrasado há ${formatSla(
+        Math.max(1, remainingSlaUnits(due, now, unit)),
+        unit,
+      )}`,
       tone: "late",
     };
-  if (hours <= 24) return { label: "Vence em até 24h", tone: "warning" };
+  const remaining = remainingSlaUnits(now, due, unit);
+  if (remaining === 0) return { label: "Vence hoje", tone: "warning" };
+  const warningLimit = unit === "hours" ? 24 : unit === "months" ? 1 : 3;
   return {
-    label: `${Math.ceil(hours / 24)}d restantes`,
-    tone: hours <= 72 ? "warning" : "ok",
+    label: `${formatSla(remaining, unit)} ${remaining === 1 ? "restante" : "restantes"}`,
+    tone: remaining <= warningLimit ? "warning" : "ok",
   };
 };
 const timeInCurrentStep = (project: Project) => {
@@ -252,7 +288,7 @@ const slaInfo = (p: Project) => {
     return { label: "Projeto atrasado · etapa atual", tone: "late" };
   if (p.hasDelayedStep)
     return { label: "Projeto atrasado · etapa anterior", tone: "late" };
-  return deadlineInfo(p.slaDueAt);
+  return deadlineInfo(p.slaDueAt, p.slaUnit);
 };
 const eventTitle = (event: Event) => {
   switch (event.eventType) {
@@ -1531,7 +1567,7 @@ function TicketCards({
           const sla = slaInfo(p),
             currentStep = p.workflow.find((step) => step.status === "current"),
             stepSla = currentStep
-              ? deadlineInfo(currentStep.dueAt)
+              ? deadlineInfo(currentStep.dueAt, currentStep.slaUnit)
               : { label: "Sem etapa ativa", tone: "neutral" };
           return (
             <article
@@ -1677,7 +1713,7 @@ function ProjectDetail({
   const sla = slaInfo(project);
   const currentStep = project.workflow.find((step) => step.status === "current");
   const stepSla = currentStep
-    ? deadlineInfo(currentStep.dueAt)
+    ? deadlineInfo(currentStep.dueAt, currentStep.slaUnit)
     : { label: "Sem etapa ativa", tone: "neutral" };
   const currentStepLate = stepSla.tone === "late";
   const custom = project.customValues
@@ -1867,7 +1903,6 @@ function ProjectDetail({
             <section className="process-section process-stage-summary">
               <header>
                 <div><span className="division-number">2</span><div><b>Etapa atual</b><small>Andamento e prazos do processo</small></div></div>
-                <span>{project.stage}</span>
               </header>
               <button className="current-stage-owner" onClick={() => {
                 setQuickStatus(project.status);
@@ -1931,7 +1966,7 @@ function ProjectDetail({
               {project.workflow.length ? (
                 <div className="sla-step-list">
                   {project.workflow.map((step) => {
-                    const deadline = deadlineInfo(step.dueAt);
+                    const deadline = deadlineInfo(step.dueAt, step.slaUnit);
                     const state = step.status === "completed"
                       ? step.completedLate ? "Concluída com atraso" : "Concluída no prazo"
                       : step.status === "current" ? "Etapa atual" : "Aguardando início";
