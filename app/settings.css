@@ -112,11 +112,44 @@
   text-align: left;
   padding: 12px;
   color: #103f40;
+  cursor: pointer;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
 }
-.kanban-card > span {
+.kanban-card:hover,
+.kanban-card:focus-visible {
+  border-color: #89aa9f;
+  box-shadow: 0 3px 12px #103f4014;
+  outline: none;
+}
+.kanban-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.kanban-card-top > span {
   font-size: 10px;
   font-weight: 800;
   color: #c67b42;
+}
+.kanban-delete {
+  width: 27px;
+  height: 27px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #9a716b;
+}
+.kanban-delete:hover,
+.kanban-delete:focus-visible {
+  background: #f5e4e1;
+  color: #a14940;
+  outline: none;
+}
+.kanban-delete svg {
+  width: 15px;
 }
 .kanban-card h3 {
   font-size: 13px;
@@ -1215,8 +1248,13 @@
 }
 
 .project-table-head > span:last-child {
-  text-align: center;
-  letter-spacing: 2px;
+  display: grid;
+  place-items: center;
+}
+
+.project-table-head > span:last-child svg {
+  width: 14px;
+  color: #9a716b;
 }
 
 .project-table-row {
@@ -1425,6 +1463,33 @@
 
 .table-more svg {
   width: 17px;
+}
+
+.project-delete {
+  color: #9a716b;
+}
+
+.project-delete:hover,
+.project-delete:focus-visible {
+  background: #f5e4e1;
+  color: #a14940;
+  outline: none;
+}
+
+.delete-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #a14940 !important;
+  color: #fff !important;
+}
+
+.delete-confirm:hover {
+  background: #863a33 !important;
+}
+
+.delete-confirm svg {
+  width: 16px;
 }
 
 .project-table-footer {

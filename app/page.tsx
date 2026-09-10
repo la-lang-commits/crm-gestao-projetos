@@ -24,7 +24,6 @@ import {
   LogOut,
   Menu,
   MessageCircle,
-  MoreHorizontal,
   Paperclip,
   Pencil,
   Plus,
@@ -48,6 +47,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { supabase } from "@/lib/supabase";
 
 type Role = "super" | "admin" | "member";
@@ -398,6 +407,8 @@ function Workspace({ user }: { user: any }) {
     [newOpen, setNewOpen] = useState(false),
     [editProject, setEditProject] = useState<Project | null>(null),
     [detailProject, setDetailProject] = useState<Project | null>(null),
+    [deleteProject, setDeleteProject] = useState<Project | null>(null),
+    [deletingProject, setDeletingProject] = useState(false),
     [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -700,6 +711,42 @@ function Workspace({ user }: { user: any }) {
     );
     await load();
   }
+  async function removeProject(project: Project) {
+    setDeletingProject(true);
+    setError("");
+    try {
+      const storagePaths = project.attachments.map(
+        (attachment) => attachment.storagePath,
+      );
+      if (storagePaths.length) {
+        const { error: storageError } = await supabase.storage
+          .from("project-attachments")
+          .remove(storagePaths);
+        if (storageError) throw storageError;
+      }
+      const { data, error: deleteError } = await supabase
+        .from("projects")
+        .delete()
+        .eq("id", project.id)
+        .select("id")
+        .single();
+      if (deleteError) throw deleteError;
+      if (!data)
+        throw new Error("Você não possui permissão para excluir este projeto.");
+      setDeleteProject(null);
+      if (detailProject?.id === project.id) setDetailProject(null);
+      setNotice(`${ticket(project.ticket)} — ${project.name} foi excluído.`);
+      await load();
+    } catch (deleteError: unknown) {
+      setError(
+        deleteError instanceof Error
+          ? deleteError.message
+          : "Não foi possível excluir este projeto.",
+      );
+    } finally {
+      setDeletingProject(false);
+    }
+  }
   async function addLabel(projectId: string) {
     if (!labelText.trim()) return;
     const { error } = await supabase.rpc("add_project_label_with_event", {
@@ -976,6 +1023,8 @@ function Workspace({ user }: { user: any }) {
               mode={projectMode}
               setMode={setProjectMode}
               openProject={setDetailProject}
+              requestDelete={setDeleteProject}
+              canDelete={role !== "member"}
               fields={areaFields}
             />
           )}
@@ -1046,6 +1095,40 @@ function Workspace({ user }: { user: any }) {
           }
         />
       )}
+      <AlertDialog
+        open={!!deleteProject}
+        onOpenChange={(open) => {
+          if (!open && !deletingProject) setDeleteProject(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir projeto?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteProject
+                ? `${ticket(deleteProject.ticket)} — ${deleteProject.name} e todo o seu histórico, etapas, comentários e anexos serão excluídos permanentemente.`
+                : "Este projeto será excluído permanentemente."}{" "}
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deletingProject}>
+              Cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="delete-confirm"
+              disabled={deletingProject}
+              onClick={(event) => {
+                event.preventDefault();
+                if (deleteProject) void removeProject(deleteProject);
+              }}
+            >
+              {deletingProject ? <Loader2 className="spin" /> : <Trash2 />}
+              {deletingProject ? "Excluindo..." : "Excluir projeto"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -1218,6 +1301,8 @@ type ListProps = {
   projects: Project[];
   fields: FieldDef[];
   openProject?: (p: Project) => void;
+  requestDelete?: (p: Project) => void;
+  canDelete?: boolean;
 };
 function ProjectsView(
   props: ListProps & {
@@ -1255,7 +1340,12 @@ function ProjectsView(
   );
 }
 
-function ProjectTable({ projects, openProject }: ListProps) {
+function ProjectTable({
+  projects,
+  openProject,
+  requestDelete,
+  canDelete,
+}: ListProps) {
   return (
     <div className="project-table-wrap">
       <div className="project-table">
@@ -1266,7 +1356,9 @@ function ProjectTable({ projects, openProject }: ListProps) {
           <span>Última atualização</span>
           <span>Responsável</span>
           <span>Prioridade</span>
-          <span aria-hidden="true">•••</span>
+          <span aria-label="Excluir projeto" title="Excluir projeto">
+            <Trash2 />
+          </span>
         </div>
         {projects.length ? (
           projects.map((project) => {
@@ -1290,6 +1382,7 @@ function ProjectTable({ projects, openProject }: ListProps) {
                 tabIndex={0}
                 onClick={() => openProject?.(project)}
                 onKeyDown={(event) => {
+                  if (event.target !== event.currentTarget) return;
                   if (event.key === "Enter" || event.key === " ") {
                     event.preventDefault();
                     openProject?.(project);
@@ -1330,17 +1423,21 @@ function ProjectTable({ projects, openProject }: ListProps) {
                 <span className={`priority-pill ${project.priority.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")}`}>
                   {project.priority}
                 </span>
-                <button
-                  className="table-more"
-                  title="Abrir processo"
-                  aria-label={`Abrir processo ${project.name}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    openProject?.(project);
-                  }}
-                >
-                  <MoreHorizontal />
-                </button>
+                {canDelete ? (
+                  <button
+                    className="table-more project-delete"
+                    title="Excluir projeto"
+                    aria-label={`Excluir projeto ${project.name}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      requestDelete?.(project);
+                    }}
+                  >
+                    <Trash2 />
+                  </button>
+                ) : (
+                  <span aria-hidden="true" />
+                )}
               </article>
             );
           })
@@ -1357,7 +1454,12 @@ function ProjectTable({ projects, openProject }: ListProps) {
     </div>
   );
 }
-function Kanban({ projects, openProject }: ListProps) {
+function Kanban({
+  projects,
+  openProject,
+  requestDelete,
+  canDelete,
+}: ListProps) {
   return (
     <div className="kanban-board">
       {statuses.map((status) => (
@@ -1371,19 +1473,43 @@ function Kanban({ projects, openProject }: ListProps) {
             {projects
               .filter((p) => p.status === status)
               .map((p) => (
-                <button
+                <article
                   className="kanban-card"
                   key={p.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => openProject?.(p)}
+                  onKeyDown={(event) => {
+                    if (event.target !== event.currentTarget) return;
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openProject?.(p);
+                    }
+                  }}
                 >
-                  <span>{ticket(p.ticket)}</span>
+                  <div className="kanban-card-top">
+                    <span>{ticket(p.ticket)}</span>
+                    {canDelete && (
+                      <button
+                        className="kanban-delete"
+                        title="Excluir projeto"
+                        aria-label={`Excluir projeto ${p.name}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          requestDelete?.(p);
+                        }}
+                      >
+                        <Trash2 />
+                      </button>
+                    )}
+                  </div>
                   <h3>{p.name}</h3>
                   <p>{p.demand}</p>
                   <footer>
                     <small>{slaInfo(p).label}</small>
                     <i>{initials(p.owner)}</i>
                   </footer>
-                </button>
+                </article>
               ))}
           </div>
         </section>
