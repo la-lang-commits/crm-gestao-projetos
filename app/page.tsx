@@ -2814,6 +2814,7 @@ function Configuration({
   const [accessPhone, setAccessPhone] = useState("");
   const [accessRole, setAccessRole] = useState<AccessRole>("member");
   const [editingAccessId, setEditingAccessId] = useState<string | null>(null);
+  const [showAccessForm, setShowAccessForm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [editCatalog, setEditCatalog] = useState<CatalogItem | null>(null);
   const [workflowCatalogId, setWorkflowCatalogId] = useState("");
@@ -2952,6 +2953,11 @@ function Configuration({
     setEditingAccessId(null);
   }
 
+  function closeAccessForm() {
+    clearAccessForm();
+    setShowAccessForm(false);
+  }
+
   async function saveAccess() {
     if (!accessAreaId) return fail("Selecione a área deste acesso.");
     if (accessName.trim().length < 2) return fail("Informe o nome completo.");
@@ -2968,7 +2974,7 @@ function Configuration({
         }),
       editingAccessId ? "Acesso atualizado." : "Acesso cadastrado para a área.",
     );
-    if (ok) clearAccessForm();
+    if (ok) closeAccessForm();
   }
 
   function editAccess(access: AccessEntry) {
@@ -2978,6 +2984,7 @@ function Configuration({
     setAccessPhone(access.phone);
     setAccessRole(access.accessRole);
     setEditingAccessId(access.id);
+    setShowAccessForm(true);
   }
 
   async function changeAccessRole(access: AccessEntry, nextRole: AccessRole) {
@@ -3000,7 +3007,7 @@ function Configuration({
       () => supabase.rpc("remove_area_access", { p_access_id: access.id }),
       "Acesso removido.",
     );
-    if (ok && editingAccessId === access.id) clearAccessForm();
+    if (ok && editingAccessId === access.id) closeAccessForm();
   }
 
   async function confirmDelete() {
@@ -3295,157 +3302,127 @@ function Configuration({
       )}
 
       {tab === "areas" && role === "super" && (
-        <div className="settings-card">
+        <div className="settings-card areas-access-card">
           <header>
             <div>
               <h2>Áreas e acessos</h2>
-              <p>
-                Cadastre e administre Secretarias, Coordenadorias e demais
-                áreas, além de definir quem pode acessar cada uma.
-              </p>
+              <p>Selecione uma área para administrar seus usuários.</p>
             </div>
           </header>
-          <div className="area-form">
-            <input
-              value={areaName}
-              onChange={(e) => setAreaName(e.target.value)}
-              placeholder="Ex.: Secretaria do Meio Ambiente"
-            />
-            <button className="primary" disabled={busy} onClick={addArea}>
-              <Plus />
-              Adicionar área
-            </button>
-          </div>
-          <div className="config-table">
-            <div className="area-row head">
-              <span>Área</span>
-              <span>Ações</span>
-            </div>
-            {areas.map((a) => (
-              <div className="area-row" key={a.id}>
+
+          <div className="areas-access-workspace">
+            <aside className="areas-panel">
+              <div className="areas-panel-heading">
+                <div><b>Áreas</b><span>{areas.length}</span></div>
+              </div>
+              <div className="area-quick-add">
+                <input
+                  value={areaName}
+                  onChange={(event) => setAreaName(event.target.value)}
+                  onKeyDown={(event) => event.key === "Enter" && addArea()}
+                  placeholder="Nome da nova área"
+                />
+                <button className="primary" disabled={busy || areaName.trim().length < 2} onClick={addArea} title="Adicionar área" aria-label="Adicionar área"><Plus /></button>
+              </div>
+              <div className="area-selector-list">
+                {areas.map((area) => {
+                  const areaAccessCount = accesses.filter((access) => access.areaId === area.id).length;
+                  return (
+                    <div className={`area-selector-item ${area.id === accessAreaId ? "active" : ""}`} key={area.id}>
+                      <button className="area-selector-main" onClick={() => {
+                        setAccessAreaId(area.id);
+                        closeAccessForm();
+                      }}>
+                        <i style={{ background: area.color }} />
+                        <span><b>{area.name}</b><small>{areaAccessCount} {areaAccessCount === 1 ? "acesso" : "acessos"}</small></span>
+                      </button>
+                      <div className="area-selector-actions">
+                        <button title="Editar nome" onClick={() => setEditArea({ ...area })}><Pencil /></button>
+                        <button title="Excluir área" onClick={() => setDeleteTarget({ kind: "area", id: area.id, label: area.name })}><Trash2 /></button>
+                      </div>
+                    </div>
+                  );
+                })}
+                {!areas.length && <div className="compact-empty">Nenhuma área cadastrada.</div>}
+              </div>
+            </aside>
+
+            <section className="area-access-panel">
+              <header className="area-access-header">
                 <div>
-                  <i style={{ background: a.color }} />
-                  <Building2 />
-                  <b>{a.name}</b>
+                  <span>ACESSOS DA ÁREA</span>
+                  <h3>{areas.find((area) => area.id === accessAreaId)?.name || "Selecione uma área"}</h3>
+                  <p>{selectedAreaAccesses.length} {selectedAreaAccesses.length === 1 ? "pessoa cadastrada" : "pessoas cadastradas"}</p>
                 </div>
-                <div className="row-actions">
-                  <button
-                    title="Editar nome"
-                    onClick={() => setEditArea({ ...a })}
-                  >
-                    <Pencil />
-                  </button>
-                  <button
-                    title="Excluir área"
-                    onClick={() =>
-                      setDeleteTarget({ kind: "area", id: a.id, label: a.name })
-                    }
-                  >
-                    <Trash2 />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="access-manager">
-            <header>
-              <div>
-                <h3>Acessos por área</h3>
-                <p>Selecione uma área para cadastrar e visualizar somente os acessos vinculados a ela.</p>
-              </div>
-              <span>{selectedAreaAccesses.length} {selectedAreaAccesses.length === 1 ? "acesso" : "acessos"}</span>
-            </header>
-            <div className="access-area-picker">
-              <label>
-                Área que será administrada
-                <select
-                  value={accessAreaId}
-                  onChange={(event) => {
-                    setAccessAreaId(event.target.value);
+                {accessAreaId && (
+                  <button className="primary" onClick={() => {
                     clearAccessForm();
-                  }}
-                >
-                  <option value="">Selecione uma área</option>
-                  {areas.map((area) => (
-                    <option value={area.id} key={area.id}>{area.name}</option>
-                  ))}
-                </select>
-              </label>
-              <div>
-                <Building2 />
-                <span><small>Área selecionada</small><b>{areas.find((area) => area.id === accessAreaId)?.name || "Nenhuma área selecionada"}</b></span>
-              </div>
-            </div>
+                    setShowAccessForm(true);
+                  }}><Plus /> Novo acesso</button>
+                )}
+              </header>
 
-            <div className="access-identity-form">
-              <label>
-                Nome completo
-                <input value={accessName} onChange={(event) => setAccessName(event.target.value)} placeholder="Ex.: Maria da Silva" />
-              </label>
-              <label>
-                E-mail
-                <input type="email" value={accessEmail} onChange={(event) => setAccessEmail(event.target.value)} placeholder="nome@orgao.sp.gov.br" />
-              </label>
-              <label>
-                Telefone <small>Opcional</small>
-                <input value={accessPhone} onChange={(event) => setAccessPhone(event.target.value)} placeholder="(11) 99999-9999" />
-              </label>
-              <label>
-                Perfil de acesso
-                <select value={accessRole} onChange={(event) => setAccessRole(event.target.value as AccessRole)}>
-                  <option value="administrator">Administrador</option>
-                  <option value="manager">Gestor</option>
-                  <option value="member">Membro</option>
-                </select>
-              </label>
-              <div className="access-role-help">
-                <ShieldCheck />
-                <div>
-                  <b>{accessRole === "administrator" ? "Administrador" : accessRole === "manager" ? "Gestor" : "Membro"}</b>
-                  <span>
-                    {accessRole === "administrator"
-                      ? "Acesso total a todas as áreas, configurações e processos."
-                      : accessRole === "manager"
-                        ? "Controle da equipe desta área, relatórios e aprovações de processos."
-                        : "Acesso limitado às ferramentas do dia a dia e execução de tarefas desta área."}
-                  </span>
-                </div>
-              </div>
-              <div className="access-form-actions">
-                {editingAccessId && <button className="secondary" onClick={clearAccessForm}>Cancelar</button>}
-                <button className="primary" disabled={busy || !accessAreaId} onClick={saveAccess}>
-                  <Plus /> {editingAccessId ? "Salvar alterações" : "Cadastrar acesso"}
-                </button>
-              </div>
-            </div>
-
-            <div className="access-list">
-              <div className="access-row access-head">
-                <span>Usuário</span><span>Contato</span><span>Perfil</span><span>Situação</span><span>Ações</span>
-              </div>
-              {selectedAreaAccesses.map((access) => (
-                <div className="access-row" key={access.id}>
-                  <div className="access-person"><i>{initials(access.fullName)}</i><b>{access.fullName}</b></div>
-                  <div className="access-contact"><span>{access.email}</span><small>{access.phone || "Telefone não informado"}</small></div>
-                  <select
-                    value={access.accessRole}
-                    onChange={(event) => changeAccessRole(access, event.target.value as AccessRole)}
-                  >
-                    <option value="administrator">Administrador</option>
-                    <option value="manager">Gestor</option>
-                    <option value="member">Membro</option>
-                  </select>
-                  <span className={`access-state ${access.userId ? "active" : "pending"}`}>
-                    {access.userId ? "Acesso ativo" : "Aguardando primeiro acesso"}
-                  </span>
-                  <div className="row-actions">
-                    <button title="Editar acesso" onClick={() => editAccess(access)}><Pencil /></button>
-                    <button title={`Remover acesso de ${access.fullName}`} onClick={() => removeAccess(access)}><Trash2 /></button>
+              {showAccessForm && (
+                <div className="access-identity-form compact-access-form">
+                  <div className="compact-form-title">
+                    <div><b>{editingAccessId ? "Editar acesso" : "Novo acesso"}</b><span>Dados do usuário e permissão nesta área</span></div>
+                    <button onClick={closeAccessForm} title="Fechar formulário" aria-label="Fechar formulário"><X /></button>
+                  </div>
+                  <label>
+                    Nome completo
+                    <input value={accessName} onChange={(event) => setAccessName(event.target.value)} placeholder="Ex.: Maria da Silva" />
+                  </label>
+                  <label>
+                    E-mail
+                    <input type="email" value={accessEmail} onChange={(event) => setAccessEmail(event.target.value)} placeholder="nome@orgao.sp.gov.br" />
+                  </label>
+                  <label>
+                    Telefone <small>Opcional</small>
+                    <input value={accessPhone} onChange={(event) => setAccessPhone(event.target.value)} placeholder="(11) 99999-9999" />
+                  </label>
+                  <label>
+                    Perfil de acesso
+                    <select value={accessRole} onChange={(event) => setAccessRole(event.target.value as AccessRole)}>
+                      <option value="administrator">Administrador</option>
+                      <option value="manager">Gestor</option>
+                      <option value="member">Membro</option>
+                    </select>
+                  </label>
+                  <div className="access-role-help">
+                    <ShieldCheck />
+                    <div>
+                      <b>{accessRole === "administrator" ? "Administrador" : accessRole === "manager" ? "Gestor" : "Membro"}</b>
+                      <span>{accessRole === "administrator" ? "Acesso total a todas as áreas, configurações e processos." : accessRole === "manager" ? "Controle da equipe desta área, relatórios e aprovações." : "Acesso às atividades e tarefas do dia a dia desta área."}</span>
+                    </div>
+                  </div>
+                  <div className="access-form-actions">
+                    <button className="secondary" onClick={closeAccessForm}>Cancelar</button>
+                    <button className="primary" disabled={busy || !accessAreaId} onClick={saveAccess}>{editingAccessId ? <Pencil /> : <Plus />} {editingAccessId ? "Salvar alterações" : "Cadastrar acesso"}</button>
                   </div>
                 </div>
-              ))}
-              {!selectedAreaAccesses.length && <div className="config-empty">Nenhum acesso cadastrado para esta área.</div>}
-            </div>
+              )}
+
+              <div className="access-list compact-access-list">
+                {selectedAreaAccesses.map((access) => (
+                  <div className="access-row" key={access.id}>
+                    <div className="access-person"><i>{initials(access.fullName)}</i><span><b>{access.fullName}</b><small>{access.email}{access.phone ? ` · ${access.phone}` : ""}</small></span></div>
+                    <select value={access.accessRole} aria-label={`Perfil de ${access.fullName}`} onChange={(event) => changeAccessRole(access, event.target.value as AccessRole)}>
+                      <option value="administrator">Administrador</option>
+                      <option value="manager">Gestor</option>
+                      <option value="member">Membro</option>
+                    </select>
+                    <span className={`access-state ${access.userId ? "active" : "pending"}`}>{access.userId ? "Ativo" : "Convite pendente"}</span>
+                    <div className="row-actions">
+                      <button title="Editar acesso" onClick={() => editAccess(access)}><Pencil /></button>
+                      <button title={`Remover acesso de ${access.fullName}`} onClick={() => removeAccess(access)}><Trash2 /></button>
+                    </div>
+                  </div>
+                ))}
+                {!selectedAreaAccesses.length && (
+                  <div className="access-empty-state"><Users /><b>Nenhum acesso nesta área</b><span>Use “Novo acesso” para adicionar a primeira pessoa.</span></div>
+                )}
+              </div>
+            </section>
           </div>
         </div>
       )}
