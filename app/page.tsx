@@ -938,11 +938,6 @@ function Workspace({ user }: { user: any }) {
             </button>
           ))}
         </div>
-        {role === "super" && (
-          <button className="manage" onClick={() => setView("Configurações")}>
-            <Building2 /> Áreas e acessos
-          </button>
-        )}
         <div className="aside-foot">
           <button
             className={view === "Configurações" ? "active" : ""}

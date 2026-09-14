@@ -1,16 +1,19 @@
 /* The dialog must be opaque; only the page behind it is translucent. */
-[data-slot="dialog-overlay"] {
+[data-slot="dialog-overlay"],
+[data-slot="alert-dialog-overlay"] {
   background: rgba(16, 63, 64, 0.52);
   backdrop-filter: blur(2px);
 }
 
-[data-slot="dialog-content"] {
+[data-slot="dialog-content"],
+[data-slot="alert-dialog-content"] {
   background: #fbfaf7;
   color: #103f40;
   border: 1px solid #d8d2c6;
   box-shadow: 0 24px 70px rgba(16, 63, 64, 0.24);
 }
 
-[data-slot="dialog-description"] {
+[data-slot="dialog-description"],
+[data-slot="alert-dialog-description"] {
   color: #7f776b;
 }
