@@ -1442,6 +1442,19 @@ function ProjectTable({
                 }}
               >
                 <div className="project-cell-name">
+                  {project.labels.length > 0 && (
+                    <div className="project-row-labels" aria-label="Etiquetas do projeto">
+                      {project.labels.map((label) => (
+                        <span
+                          key={label.id}
+                          title={label.label_text}
+                          style={{ backgroundColor: label.color || "#e3ece7" }}
+                        >
+                          {label.label_text}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                   <b>{project.name}</b>
                   <small>{ticket(project.ticket)}{project.sei ? ` · SEI ${project.sei}` : ""}</small>
                   <p>{project.demand}</p>

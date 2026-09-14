@@ -3594,3 +3594,22 @@
     grid-column: 2;
   }
 }
+
+/* Labels use the project's live label list, above its name. */
+.project-row-labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin: 0 0 8px;
+}
+.project-row-labels > span {
+  display: inline-block;
+  max-width: 100%;
+  padding: 3px 8px;
+  border-radius: 5px;
+  color: #103f40;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
