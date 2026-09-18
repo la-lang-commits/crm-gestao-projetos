@@ -72,6 +72,7 @@ type AccessEntry = {
   id: string;
   areaId: string;
   userId: string | null;
+  accountCreated: boolean;
   fullName: string;
   email: string;
   phone: string;
@@ -496,7 +497,7 @@ function Workspace({ user }: { user: any }) {
           "id,area_id,field_key,label,field_type,required,visible,is_system,sort_order",
         )
         .order("sort_order"),
-      supabase.from("profiles").select("id,email,full_name,phone").order("full_name"),
+      supabase.from("profiles").select("id,email,full_name,phone,auth_user_id").order("full_name"),
       supabase
         .from("area_accesses")
         .select("id,area_id,user_id,full_name,email,phone,access_role,created_at")
@@ -535,6 +536,7 @@ function Workspace({ user }: { user: any }) {
         id: access.id,
         areaId: access.area_id,
         userId: access.user_id,
+        accountCreated: Boolean((ur.data || []).find((profile: any) => profile.id === access.user_id)?.auth_user_id),
         fullName: access.full_name,
         email: access.email,
         phone: access.phone || "",
@@ -3674,7 +3676,7 @@ function Configuration({
                       <option value="manager">Gestor</option>
                       <option value="member">Membro</option>
                     </select>
-                    <span className={`access-state ${access.userId ? "active" : "pending"}`}>{access.userId ? "Ativo" : "Convite pendente"}</span>
+                    <span className={`access-state ${access.accountCreated ? "active" : "pending"}`}>{access.accountCreated ? "Ativo" : "Convite pendente"}</span>
                     <div className="row-actions">
                       <button title="Editar acesso" onClick={() => editAccess(access)}><Pencil /></button>
                       <button title={`Remover acesso de ${access.fullName}`} onClick={() => removeAccess(access)}><Trash2 /></button>
