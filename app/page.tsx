@@ -4272,7 +4272,7 @@ function EditProject({
           </>}
           <section>
             <h3>Registro da alteração</h3>
-          {role !== "member" && (
+          {!advanceOnly && role !== "member" && (
             <label>
               Justificativa referente a
               <select
