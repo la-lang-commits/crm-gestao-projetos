@@ -3602,6 +3602,19 @@
   gap: 5px;
   margin: 0 0 8px;
 }
+
+.ticket-secondary-fields .ticket-advance {
+  margin: 12px 0;
+  padding: 12px;
+  white-space: normal;
+  line-height: 1.4;
+  font-size: 13px;
+}
+.ticket-advance svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
 .project-row-labels > span {
   display: inline-block;
   max-width: 100%;

@@ -1081,6 +1081,7 @@ function Workspace({ user }: { user: any }) {
       </main>
       {editProject && (
         <EditProject
+          advanceOnly
           project={editProject}
           members={areaMembers}
           catalog={areaCatalog}
@@ -1866,7 +1867,6 @@ function ProjectDetail({
           <section className="process-column process-ticket-column">
             <header className="process-column-title">
               <div><span>1</span><div><b>Informações do ticket</b><small>Dados preenchidos na abertura</small></div></div>
-              <button onClick={() => edit(project)} title="Editar informações do ticket" aria-label="Editar informações do ticket"><Pencil /></button>
             </header>
             <div className="ticket-primary-fields">
               <article>
@@ -1935,6 +1935,14 @@ function ProjectDetail({
             <div className="ticket-secondary-fields">
               {show("openedAt") && (
                 <div><b>Data de abertura</b><span>{new Date(project.openedAt + "T12:00:00").toLocaleDateString("pt-BR")}</span></div>
+              )}
+              {project.workflow.some((step) => step.status === "current") && (
+                <button className="primary wide ticket-advance" onClick={() => edit(project)}>
+                  <CheckCircle2 />
+                  {project.workflow.some((step) => step.status === "pending")
+                    ? "Encaminhar para próxima etapa"
+                    : "Concluir projeto"}
+                </button>
               )}
               <div><b>Prioridade</b><span>{project.priority}</span></div>
               {custom.map((item) => (
@@ -4078,6 +4086,7 @@ type UpdateValues = {
   advance: boolean;
 };
 function EditProject({
+  advanceOnly = false,
   project,
   members,
   catalog,
@@ -4087,6 +4096,7 @@ function EditProject({
   setOpen,
   onUpdate,
 }: {
+  advanceOnly?: boolean;
   project: Project;
   members: Member[];
   catalog: CatalogItem[];
@@ -4149,14 +4159,15 @@ function EditProject({
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="update-dialog full-edit-dialog">
         <DialogHeader>
-          <DialogTitle>Editar informações — {ticket(project.ticket)}</DialogTitle>
+          <DialogTitle>{advanceOnly ? "Encaminhar etapa" : "Editar informações"} — {ticket(project.ticket)}</DialogTitle>
           <DialogDescription>
-            Corrija os dados preenchidos na abertura. A alteração ficará registrada no histórico.
+            {advanceOnly ? "Informe a justificativa para concluir a etapa atual. O encaminhamento ficará registrado no histórico." : "Corrija os dados preenchidos na abertura. A alteração ficará registrada no histórico."}
           </DialogDescription>
         </DialogHeader>
         <div className="form update-form full-ticket-edit">
           {error && <div className="project-submit-error" role="alert"><XCircle /><span>{error}</span></div>}
 
+          {!advanceOnly && <>
           <section>
             <h3>Projeto e demanda</h3>
             <div className="edit-grid">
@@ -4258,6 +4269,7 @@ function EditProject({
             </div>
           </section>
 
+          </>}
           <section>
             <h3>Registro da alteração</h3>
           {role !== "member" && (
@@ -4285,7 +4297,7 @@ function EditProject({
             <textarea
               value={v.justification}
               onChange={(e) => setV({ ...v, justification: e.target.value })}
-              placeholder="Explique o motivo da alteração"
+              placeholder={advanceOnly ? "Descreva a conclusão da etapa atual" : "Explique o motivo da alteração"}
             />
           </label>
           </section>
@@ -4308,13 +4320,13 @@ function EditProject({
               </button>
             </div>
           )}
-          <button
+          {!advanceOnly && <button
             className="primary wide"
             disabled={busy}
             onClick={() => submit(false)}
           >
             {busy ? <Loader2 /> : "Salvar alteração e justificativa"}
-          </button>
+          </button>}
         </div>
       </DialogContent>
     </Dialog>
