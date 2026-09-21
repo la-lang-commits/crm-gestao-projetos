@@ -1444,19 +1444,7 @@ function ProjectTable({
                 }}
               >
                 <div className="project-cell-name">
-                  {project.labels.length > 0 && (
-                    <div className="project-row-labels" aria-label="Etiquetas do projeto">
-                      {project.labels.map((label) => (
-                        <span
-                          key={label.id}
-                          title={label.label_text}
-                          style={{ backgroundColor: label.color || "#e3ece7" }}
-                        >
-                          {label.label_text}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+                  <ProjectLabels labels={project.labels} />
                   <b>{project.name}</b>
                   <small>{ticket(project.ticket)}{project.sei ? ` · SEI ${project.sei}` : ""}</small>
                   <p>{project.demand}</p>
@@ -1521,6 +1509,22 @@ function ProjectTable({
     </div>
   );
 }
+function ProjectLabels({ labels }: { labels: Label[] }) {
+  if (!labels.length) return null;
+  return (
+    <div className="project-row-labels" aria-label="Etiquetas do projeto">
+      {labels.map((label) => (
+        <span
+          key={label.id}
+          title={label.label_text}
+          style={{ backgroundColor: label.color || "#e3ece7" }}
+        >
+          {label.label_text}
+        </span>
+      ))}
+    </div>
+  );
+}
 function Kanban({
   projects,
   openProject,
@@ -1570,6 +1574,7 @@ function Kanban({
                       </button>
                     )}
                   </div>
+                  <ProjectLabels labels={p.labels} />
                   <h3>{p.name}</h3>
                   <p>{p.demand}</p>
                   <footer>
