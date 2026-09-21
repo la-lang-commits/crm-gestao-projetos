@@ -1936,6 +1936,7 @@ function ProjectDetail({
               {show("openedAt") && (
                 <div><b>Data de abertura</b><span>{new Date(project.openedAt + "T12:00:00").toLocaleDateString("pt-BR")}</span></div>
               )}
+              <div><b>Prioridade</b><span>{project.priority}</span></div>
               {project.workflow.some((step) => step.status === "current") && (
                 <button className="primary wide ticket-advance" onClick={() => edit(project)}>
                   <CheckCircle2 />
@@ -1944,7 +1945,6 @@ function ProjectDetail({
                     : "Concluir projeto"}
                 </button>
               )}
-              <div><b>Prioridade</b><span>{project.priority}</span></div>
               {custom.map((item) => (
                 <div key={item.field!.id}><b>{item.field!.label}</b><span>{item.value || "—"}</span></div>
               ))}
