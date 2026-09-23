@@ -3596,6 +3596,24 @@
 }
 
 /* Labels use the project's live label list, above its name. */
+.metrics-table-wrap { overflow-x: auto; }
+.metrics-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.metrics-table th, .metrics-table td { padding: 16px 20px; border-bottom: 1px solid #e8e2d7; text-align: center; white-space: nowrap; }
+.metrics-table th:first-child, .metrics-table td:first-child { text-align: left; white-space: normal; min-width: 190px; }
+.metrics-table thead, .metrics-table tfoot { background: #f4f1ea; font-weight: 600; }
+.metrics-table tbody th { font-weight: 500; }
+.metrics-table small { display: block; margin-top: 5px; color: #80786c; font-size: 12px; }
+.metrics-table button { color: #125b5a; text-align: left; text-decoration: underline; text-underline-offset: 3px; }
+.metrics-table button:focus-visible { outline: 2px solid #125b5a; outline-offset: 3px; }
+.duration-summary { padding: 24px; display: grid; gap: 10px; }
+.duration-summary > strong { font-size: clamp(23px, 3vw, 34px); font-weight: 600; color: #194e4d; }
+.duration-summary p, .duration-summary small, .metrics-note { color: #80786c; line-height: 1.5; }
+.metrics-note { padding: 20px; }
+.duration-report header { flex-wrap: wrap; gap: 16px; }
+.duration-report header select { margin-left: 8px; padding: 8px 12px; border: 1px solid #ded6c8; border-radius: 7px; background: #fff; }
+.duration-home footer button { padding: 10px 16px; }
+.duration-table th:first-child { min-width: 250px; }
+
 .project-row-labels {
   display: flex;
   flex-wrap: wrap;

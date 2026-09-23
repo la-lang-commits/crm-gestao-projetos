@@ -58,6 +58,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/lib/supabase";
+import { ownerCounts, projectDuration } from "@/lib/project-metrics";
 
 type Role = "super" | "admin" | "member";
 type Status =
@@ -102,6 +103,7 @@ type Event = {
   toOwner?: { full_name: string };
   fromStage?: string;
   toStage?: string;
+  toStatus?: string;
 };
 type CatalogItem = {
   id: string;
@@ -482,7 +484,7 @@ function Workspace({ user }: { user: any }) {
       supabase
         .from("projects")
         .select(
-          "id,catalog_id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,updated_at,sla_days,sla_value,sla_unit,sla_due_at,has_delayed_step,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),workflow:project_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,status,started_at,due_at,completed_at,completed_late,assignee:profiles!project_workflow_steps_assignee_id_fkey(full_name)),labels:project_labels(id,label_text,color),attachments:project_attachments(id,storage_path,file_name,mime_type,size_bytes,uploaded_by,created_at,uploader:profiles!project_attachments_uploaded_by_fkey(full_name)),events:project_events(id,event_type,justification,created_at,actor_user_id,from_stage,to_stage,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),from_owner:profiles!project_events_from_owner_id_fkey(full_name),to_owner:profiles!project_events_to_owner_id_fkey(full_name)),custom_values:project_field_values(field_id,value)",
+          "id,catalog_id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,updated_at,sla_days,sla_value,sla_unit,sla_due_at,has_delayed_step,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),workflow:project_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,status,started_at,due_at,completed_at,completed_late,assignee:profiles!project_workflow_steps_assignee_id_fkey(full_name)),labels:project_labels(id,label_text,color),attachments:project_attachments(id,storage_path,file_name,mime_type,size_bytes,uploaded_by,created_at,uploader:profiles!project_attachments_uploaded_by_fkey(full_name)),events:project_events(id,event_type,justification,created_at,actor_user_id,from_stage,to_stage,to_status,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),from_owner:profiles!project_events_from_owner_id_fkey(full_name),to_owner:profiles!project_events_to_owner_id_fkey(full_name)),custom_values:project_field_values(field_id,value)",
         )
         .order("updated_at", { ascending: false }),
       supabase
@@ -656,6 +658,7 @@ function Workspace({ user }: { user: any }) {
               toOwner: event.to_owner,
               fromStage: event.from_stage,
               toStage: event.to_stage,
+              toStatus: event.to_status,
             }))
             .sort(
               (a: Event, b: Event) =>
@@ -923,7 +926,7 @@ function Workspace({ user }: { user: any }) {
           />
           <Nav icon={<List />} label="Tarefas" />
           <Nav icon={<CalendarDays />} label="Calendário" />
-          <Nav icon={<BarChart3 />} label="Relatórios" />
+          <Nav icon={<BarChart3 />} label="Relatórios" active={view === "Relatórios"} click={() => setView("Relatórios")} />
         </nav>
         <p className="section-label">
           ÁREAS <span>{role === "super" ? "Todas" : "Meu acesso"}</span>
@@ -1065,7 +1068,11 @@ function Workspace({ user }: { user: any }) {
               period={period}
               setPeriod={setPeriod}
               openProjects={() => setView("Projetos")}
+              members={areaMembers}
+              openReports={() => setView("Relatórios")}
             />
+          ) : view === "Relatórios" ? (
+            <DurationReport projects={projects} openProject={setDetailProject} />
           ) : (
             <ProjectsView
               projects={projects}
@@ -1221,21 +1228,21 @@ function Dashboard({
   period,
   setPeriod,
   openProjects,
+  members,
+  openReports,
 }: {
   projects: Project[];
   fields: FieldDef[];
   period: string;
   setPeriod: (x: string) => void;
   openProjects: () => void;
+  members: Member[];
+  openReports: () => void;
 }) {
   const counts = statuses.map((s) => ({
       s,
       n: projects.filter((p) => p.status === s).length,
-    })),
-    bars =
-      period === "Semanal"
-        ? [32, 48, 42, 67, 55, 78, 70]
-        : [35, 47, 62, 58, 73, 81];
+    }));
   return (
     <>
       <section className="cards status-five">
@@ -1259,53 +1266,14 @@ function Dashboard({
         ))}
       </section>
       <section className="dash-grid">
-        <article className="report">
-          <header>
-            <div>
-              <h2>Relatório de desempenho</h2>
-              <p>Projetos movimentados no período</p>
-            </div>
-            <div className="period">
-              {["Semanal", "Mensal"].map((x) => (
-                <button
-                  key={x}
-                  className={period === x ? "active" : ""}
-                  onClick={() => setPeriod(x)}
-                >
-                  {x}
-                </button>
-              ))}
-            </div>
-          </header>
-          <div className="chart">
-            <div className="ylabels">
-              <span>100%</span>
-              <span>75%</span>
-              <span>50%</span>
-              <span>25%</span>
-              <span>0</span>
-            </div>
-            <div className="bars">
-              {bars.map((h, i) => (
-                <div key={i}>
-                  <span style={{ height: h + "%" }} />
-                  <small>
-                    {period === "Semanal"
-                      ? ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"][i]
-                      : ["Mar", "Abr", "Mai", "Jun", "Jul", "Ago"][i]}
-                  </small>
-                </div>
-              ))}
-            </div>
-          </div>
-          <footer>
-            <TrendingUp />
-            <b>{projects.length}</b> projetos analisados no período
-          </footer>
+        <article className="report duration-home">
+          <header><div><h2>Tempo dos projetos</h2><p>Da abertura à conclusão, em dias corridos</p></div></header>
+          <DurationSummary projects={projects} />
+          <footer><button className="primary" onClick={openReports}>Ver duração por projeto</button></footer>
         </article>
         <article className="summary">
           <header>
-            <h2>Resumo {period.toLowerCase()}</h2>
+            <h2>Resumo da área</h2>
             <p>Visão consolidada da área</p>
           </header>
           <div className="ring">
@@ -1341,17 +1309,56 @@ function Dashboard({
       <section className="recent">
         <header>
           <div>
-            <h2>Projetos recentes</h2>
-            <p>Dados atualizados em tempo real</p>
+            <h2>Projetos por responsável</h2>
+            <p>Distribuição por responsável atual, nesta área</p>
           </div>
           <button onClick={openProjects}>Ver todos</button>
         </header>
-        <TicketCards projects={projects.slice(0, 3)} fields={fields} compact />
+        <OwnerSummary projects={projects} members={members} />
       </section>
     </>
   );
 }
 
+function OwnerSummary({ projects, members }: { projects: Project[]; members: Member[] }) {
+  const rows = ownerCounts(projects, members);
+  return <div className="metrics-table-wrap"><table className="metrics-table">
+    <thead><tr><th scope="col">Responsável</th>{statuses.map(s => <th scope="col" key={s}>{s}</th>)}<th scope="col">Total</th></tr></thead>
+    <tbody>{rows.map(row => <tr key={row.id}><th scope="row">{row.name}</th>{statuses.map(s => <td key={s}>{row.counts[s] || 0}</td>)}<td><strong>{row.total}</strong></td></tr>)}</tbody>
+    <tfoot><tr><th scope="row">Total da área</th>{statuses.map(s => <td key={s}>{projects.filter(p => p.status === s).length}</td>)}<td>{projects.length}</td></tr></tfoot>
+  </table>{!rows.length && <p className="metrics-note">Nenhum responsável ou projeto cadastrado nesta área.</p>}</div>;
+}
+function DurationSummary({ projects }: { projects: Project[] }) {
+  const completed = projects.filter(p => p.status === "Concluído");
+  const durations = completed.map(p => projectDuration(p)).filter((n): n is number => n !== null);
+  const average = durations.length ? (durations.reduce((a,b) => a+b,0) / durations.length).toLocaleString("pt-BR", { maximumFractionDigits: 1 }) : null;
+  return <div className="duration-summary">
+    <span>Média de duração dos concluídos</span><strong>{average === null ? "Ainda sem histórico" : `${average} dias`}</strong>
+    <p>{durations.length ? `Base: ${durations.length} projeto(s) com data de conclusão registrada.` : "A média aparecerá quando houver projetos com conclusão registrada."}</p>
+    {durations.length > 0 && durations.length < 3 && <small>Histórico inicial: poucos projetos para indicar uma tendência.</small>}
+    {completed.length > durations.length && <small>{completed.length - durations.length} concluído(s) sem data de conclusão, fora da média.</small>}
+    <small>Tempo real em dias corridos. Não representa o SLA nem uma previsão de entrega.</small>
+  </div>;
+}
+function DurationReport({ projects, openProject }: { projects: Project[]; openProject: (p: Project) => void }) {
+  const [filter, setFilter] = useState("Todos");
+  const filtered = projects.filter(p => filter === "Todos" || (filter === "Em aberto" ? p.status !== "Concluído" && p.status !== "Cancelado" : p.status === filter));
+  return <section className="recent duration-report">
+    <header><div><h2>Tempo por projeto</h2><p>Da data de abertura até hoje ou até a conclusão registrada</p></div>
+      <label>Status <select value={filter} onChange={e => setFilter(e.target.value)}>{["Todos", "Em aberto", "Concluído", "Cancelado"].map(s => <option key={s}>{s}</option>)}</select></label>
+    </header>
+    <DurationSummary projects={projects} />
+    <div className="metrics-table-wrap"><table className="metrics-table duration-table">
+      <thead><tr><th scope="col">Projeto / demanda</th><th scope="col">Responsável atual</th><th scope="col">Status</th><th scope="col">Abertura</th><th scope="col">Tempo decorrido / duração</th><th scope="col">SLA previsto</th></tr></thead>
+      <tbody>{filtered.map(p => { const days = projectDuration(p); return <tr key={p.id}>
+        <th scope="row"><button onClick={() => openProject(p)}>{p.name}</button><small>{ticket(p.ticket)} · {p.demand}</small></th>
+        <td>{p.owner}</td><td>{p.status}</td><td>{new Date(p.openedAt + "T12:00:00").toLocaleDateString("pt-BR")}</td>
+        <td>{days === null ? (p.status === "Cancelado" ? "Cancelado · fora da média" : "Data indisponível") : `${days} dia${days === 1 ? "" : "s"}`}<small>{days !== null ? (p.status === "Concluído" ? "Duração até a conclusão" : "Em aberto · até hoje") : ""}</small></td>
+        <td>{formatSla(p.slaValue, p.slaUnit)}</td>
+      </tr>; })}</tbody>
+    </table>{!filtered.length && <p className="metrics-note">Nenhum projeto neste filtro.</p>}</div>
+  </section>;
+}
 type ListProps = {
   projects: Project[];
   fields: FieldDef[];
