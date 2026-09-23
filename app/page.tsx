@@ -1352,14 +1352,15 @@ function DurationChart({ projects }: { projects: Project[] }) {
     <small>Dias corridos; não é uma previsão de entrega. Cancelados e concluídos sem data registrada ficam fora do gráfico.</small>
   </div>;
 }
-function WorkflowOwners({ project, showStages = true }: { project: Project; showStages?: boolean }) {
+function WorkflowOwners({ project, showStages = true, showOwners = true }: { project: Project; showStages?: boolean; showOwners?: boolean }) {
   const steps = [...project.workflow].sort((a,b) => a.order-b.order);
   const current = steps.find(s => s.status === "current");
   const next = nextWorkflowStep(steps);
-  return <section className="workflow-owners" aria-label="Esteira de responsáveis">
-    <h3>Esteira de responsáveis</h3><p>{current ? next ? `Ao encaminhar: ${next.assignee || "Sem responsável definido"}${showStages ? ` · ${next.stageName}` : ""}` : "Última etapa: ao confirmar, o projeto será concluído." : project.status === "Concluído" ? "Fluxo concluído." : "Nenhuma etapa atual configurada."}</p>
-    <ol>{steps.map(step => <li key={step.id} className={step.status === "current" ? "is-current" : step.id === next?.id ? "is-next" : step.status === "completed" ? "is-completed" : ""} aria-current={step.status === "current" ? "step" : undefined}>
-      <i>{step.status === "completed" ? <CheckCircle2 /> : step.order}</i><small>{step.status === "current" ? "Agora" : step.id === next?.id ? "Próximo" : step.status === "completed" ? "Concluída" : step.status === "skipped" ? "Ignorada" : "A seguir"}</small><b>{step.status === "current" ? project.owner : step.assignee || "Sem responsável definido"}</b>{showStages && <span>{step.stageName}</span>}
+  return <section className="workflow-owners" aria-label="Esteira do projeto">
+    <div className="workflow-project-status"><small>STATUS DO PROJETO</small><div>{statuses.map(status => <span key={status} className={project.status === status ? "selected" : ""} aria-current={project.status === status ? "true" : undefined}>{project.status === status && <i />}{status}</span>)}</div></div>
+    <div className="workflow-destination"><small>{current && next ? "PRÓXIMO ENCAMINHAMENTO" : "ANDAMENTO DO FLUXO"}</small><strong>{current ? next ? [showOwners ? next.assignee || "Sem responsável definido" : "", showStages ? next.stageName : ""].filter(Boolean).join(" · ") : "Última etapa do projeto" : project.status === "Concluído" ? "Fluxo concluído" : "Nenhuma etapa atual configurada"}</strong><p>{current ? next ? "Ao encaminhar, o projeto seguirá automaticamente para esta etapa." : "Ao confirmar o encaminhamento, o projeto será concluído." : "Acompanhe abaixo as etapas do projeto."}</p></div>
+    <ol>{steps.map((step,index) => <li key={step.id} className={step.status === "current" ? "is-current" : step.id === next?.id ? "is-next" : step.status === "completed" ? "is-completed" : ""} aria-current={step.status === "current" ? "step" : undefined}>
+      <i>{step.status === "completed" ? <CheckCircle2 /> : index + 1}</i><div className="workflow-step-content"><div className="workflow-step-heading"><b>{showStages ? step.stageName : 'Etapa ' + (index + 1)}</b><small>{step.status === "current" ? "Atual" : step.id === next?.id ? "Próxima" : step.status === "completed" ? "Concluída" : step.status === "skipped" ? "Ignorada" : "A seguir"}</small></div>{showOwners && <span>{step.status === "current" ? project.owner || "Sem responsável definido" : step.assignee || "Sem responsável definido"}</span>}</div>
     </li>)}</ol>
   </section>;
 }
@@ -2013,41 +2014,7 @@ function ProjectDetail({
               <header>
                 <div><span className="division-number">2</span><div><b>Etapa atual</b><small>Andamento e prazos do processo</small></div></div>
               </header>
-              {show("stage") && <div className="ticket-stage-field"><small>{label("stage", "Etapa inicial")}</small><b>{project.stage}</b></div>}
-              {show("ownerId") && <button className="current-stage-owner" onClick={() => {
-                setQuickStatus(project.status);
-                setQuickSei(project.sei);
-                setQuickOwnerId(project.ownerId);
-                setQuickJustification("");
-                setQuickError("");
-                setQuickEdit("owner");
-              }}>
-                <span><Users />{label("ownerId", "Responsável")}</span>
-                <b>{project.owner}</b>
-                <small>{currentStep ? `${formatSla(currentStep.slaValue, currentStep.slaUnit)} · ${stepSla.label}` : "Sem etapa de SLA ativa"}</small>
-                <Pencil />
-              </button>}
-              {quickEdit === "owner" && (
-                <div className="quick-ticket-editor owner-quick-editor">
-                  <header>
-                    <b>Alterar responsável atual</b>
-                    <button onClick={() => setQuickEdit(null)} aria-label="Fechar edição"><X /></button>
-                  </header>
-                  <label>Responsável
-                    <select value={quickOwnerId} onChange={(event) => setQuickOwnerId(event.target.value)}>
-                      {members.map((member) => <option key={member.id} value={member.id}>{member.name}</option>)}
-                    </select>
-                  </label>
-                  <label>Justificativa da transferência
-                    <textarea value={quickJustification} onChange={(event) => setQuickJustification(event.target.value)} placeholder="Explique por que o processo será transferido" />
-                  </label>
-                  {quickError && <small className="quick-edit-error">{quickError}</small>}
-                  <button className="quick-edit-save" disabled={quickBusy || !quickOwnerId} onClick={saveQuickEdit}>
-                    {quickBusy ? <Loader2 /> : null} Salvar transferência
-                  </button>
-                </div>
-              )}
-              {show("ownerId") && <WorkflowOwners project={project} showStages={show("stage")} />}
+              {(show("ownerId") || show("stage")) && <WorkflowOwners project={project} showStages={show("stage")} showOwners={show("ownerId")} />}
             </section>
 
             <section className="process-section">
