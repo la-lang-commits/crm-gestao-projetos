@@ -2005,7 +2005,7 @@ function ProjectDetail({
               {custom.map((item) => (
                 <div key={item.field!.id}><b>{item.field!.label}</b><span>{item.value || "—"}</span></div>
               ))}
-              {show("observation") && <div className="ticket-observation-field"><b>{label("observation", "Observação")}</b><span>{project.observation || "—"}</span></div>}
+
             </div>
           </section>
 
