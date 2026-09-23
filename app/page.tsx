@@ -466,8 +466,8 @@ function Workspace({ user }: { user: any }) {
           )
         ? "admin"
         : "member";
-  async function load() {
-    setLoading(true);
+  async function load(background = false) {
+    if (!background) setLoading(true);
     setError("");
     const [pr, ar, mr, jr, cr, fr, ur, aa] = await Promise.all([
       supabase
@@ -1051,7 +1051,7 @@ function Workspace({ user }: { user: any }) {
               members={areaMembers}
               accesses={accesses}
               fields={areaFields}
-              reload={load}
+              reload={() => load(true)}
               message={setNotice}
               fail={setError}
             />
@@ -3135,15 +3135,21 @@ function Configuration({
   async function run(action: () => PromiseLike<{ error: any }>, ok: string) {
     setBusy(true);
     fail("");
-    const { error } = await action();
-    setBusy(false);
-    if (error) {
-      fail(error.message);
+    try {
+      const { error } = await action();
+      if (error) {
+        fail(error.message);
+        return false;
+      }
+      await reload();
+      message(ok);
+      return true;
+    } catch (error: any) {
+      fail(error.message || "Não foi possível salvar. Tente novamente.");
       return false;
+    } finally {
+      setBusy(false);
     }
-    message(ok);
-    await reload();
-    return true;
   }
 
   async function addCatalog() {
