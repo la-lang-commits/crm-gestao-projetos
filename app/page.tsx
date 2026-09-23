@@ -1784,7 +1784,7 @@ function ProjectDetail({
   const timelineIndex = timelineStatuses.indexOf(project.status);
 
   async function saveQuickEdit() {
-    if (quickJustification.trim().length < 3) {
+    if (quickEdit !== "sei" && quickJustification.trim().length < 3) {
       setQuickError("Informe uma justificativa para registrar a alteração.");
       return;
     }
@@ -1795,7 +1795,7 @@ function ProjectDetail({
         status: quickStatus,
         sei: quickSei,
         ownerId: quickOwnerId,
-        justification: quickJustification.trim(),
+        justification: quickEdit === "sei" ? "Atualização do nº do SEI." : quickJustification.trim(),
       });
       setQuickEdit(null);
       setQuickJustification("");
@@ -1893,6 +1893,20 @@ function ProjectDetail({
               </article>
               <article className="editable-ticket-field">
                 <b>Nº do SEI</b>
+                {quickEdit === "sei" ? (
+                  <div className="sei-inline-editor">
+                    <input autoFocus aria-label="Nº do SEI" value={quickSei} disabled={quickBusy}
+                      onChange={(event) => setQuickSei(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !quickBusy) { event.preventDefault(); void saveQuickEdit(); }
+                        if (event.key === "Escape" && !quickBusy) setQuickEdit(null);
+                      }} />
+                    <button type="button" title="Salvar nº do SEI" aria-label="Salvar nº do SEI" disabled={quickBusy} onClick={() => void saveQuickEdit()}>
+                      {quickBusy ? <Loader2 className="spin" /> : <CheckCircle2 />}
+                    </button>
+                    <button type="button" title="Cancelar edição" aria-label="Cancelar edição do SEI" disabled={quickBusy} onClick={() => setQuickEdit(null)}><X /></button>
+                  </div>
+                ) : (
                 <button onClick={() => {
                   setQuickStatus(project.status);
                   setQuickSei(project.sei);
@@ -1904,25 +1918,21 @@ function ProjectDetail({
                   <span>{project.sei || "Não informado"}</span>
                   <Pencil />
                 </button>
+                )}
+                {quickEdit === "sei" && quickError && <small className="quick-edit-error" role="alert">{quickError}</small>}
               </article>
             </div>
-            {quickEdit && quickEdit !== "owner" && (
+            {quickEdit === "status" && (
               <div className="quick-ticket-editor">
                 <header>
-                  <b>{quickEdit === "status" ? "Editar status" : "Editar nº do SEI"}</b>
+                  <b>Editar status</b>
                   <button onClick={() => setQuickEdit(null)} aria-label="Fechar edição"><X /></button>
                 </header>
-                {quickEdit === "status" ? (
                   <label>Status
                     <select value={quickStatus} onChange={(event) => setQuickStatus(event.target.value as Status)}>
                       {statuses.map((status) => <option key={status}>{status}</option>)}
                     </select>
                   </label>
-                ) : (
-                  <label>Nº do SEI
-                    <input autoFocus value={quickSei} onChange={(event) => setQuickSei(event.target.value)} placeholder="Informe o número do SEI" />
-                  </label>
-                )}
                 <label>Justificativa da alteração
                   <textarea value={quickJustification} onChange={(event) => setQuickJustification(event.target.value)} placeholder="Explique por que este dado foi alterado" />
                 </label>

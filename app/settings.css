@@ -3603,6 +3603,36 @@
   margin: 0 0 8px;
 }
 
+.sei-inline-editor {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.sei-inline-editor input {
+  min-width: 0;
+  flex: 1;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #a9c7bf;
+  border-radius: 6px;
+  background: #fff;
+  color: #194e4d;
+}
+.sei-inline-editor button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  color: #194e4d;
+  background: #e3ece7;
+}
+.sei-inline-editor button svg { width: 18px; height: 18px; }
+.sei-inline-editor button:disabled { opacity: .5; cursor: wait; }
+
 .ticket-secondary-fields .ticket-advance {
   margin: 12px 0;
   padding: 12px;
