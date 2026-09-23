@@ -1352,15 +1352,20 @@ function DurationChart({ projects }: { projects: Project[] }) {
     <small>Dias corridos; não é uma previsão de entrega. Cancelados e concluídos sem data registrada ficam fora do gráfico.</small>
   </div>;
 }
+const workflowDate = (value: string | null | undefined) => value ? new Date(value.length === 10 ? value + 'T12:00:00' : value).toLocaleDateString('pt-BR') : '—';
 function WorkflowOwners({ project, showStages = true, showOwners = true }: { project: Project; showStages?: boolean; showOwners?: boolean }) {
   const steps = [...project.workflow].sort((a,b) => a.order-b.order);
   const current = steps.find(s => s.status === "current");
   const next = nextWorkflowStep(steps);
   return <section className="workflow-owners" aria-label="Esteira do projeto">
     <div className="workflow-project-status"><small>STATUS DO PROJETO</small><div>{statuses.map(status => <span key={status} className={project.status === status ? "selected" : ""} aria-current={project.status === status ? "true" : undefined}>{project.status === status && <i />}{status}</span>)}</div></div>
-    <div className="workflow-destination"><small>{current && next ? "PRÓXIMO ENCAMINHAMENTO" : "ANDAMENTO DO FLUXO"}</small><strong>{current ? next ? [showOwners ? next.assignee || "Sem responsável definido" : "", showStages ? next.stageName : ""].filter(Boolean).join(" · ") : "Última etapa do projeto" : project.status === "Concluído" ? "Fluxo concluído" : "Nenhuma etapa atual configurada"}</strong><p>{current ? next ? "Ao encaminhar, o projeto seguirá automaticamente para esta etapa." : "Ao confirmar o encaminhamento, o projeto será concluído." : "Acompanhe abaixo as etapas do projeto."}</p></div>
+    <div className="workflow-destination reference-destination">
+      <div><i><CircleDot /></i><span><small>{next ? "PRÓXIMA ETAPA" : "ANDAMENTO"}</small><strong>{next ? showStages ? next.stageName : "Próxima etapa" : project.status === "Concluído" ? "Fluxo concluído" : current ? "Última etapa" : "Sem etapa ativa"}</strong></span></div>
+      {showOwners && <div><Users /><span><small>Responsável</small><strong>{next?.assignee || (current ? project.owner : "—")}</strong></span></div>}
+      <div><CalendarDays /><span><small>Previsão de início</small><strong>{next && current?.dueAt ? workflowDate(current.dueAt) : "—"}</strong></span></div>
+    </div>
     <ol>{steps.map((step,index) => <li key={step.id} className={step.status === "current" ? "is-current" : step.id === next?.id ? "is-next" : step.status === "completed" ? "is-completed" : ""} aria-current={step.status === "current" ? "step" : undefined}>
-      <i>{step.status === "completed" ? <CheckCircle2 /> : index + 1}</i><div className="workflow-step-content"><div className="workflow-step-heading"><b>{showStages ? step.stageName : 'Etapa ' + (index + 1)}</b><small>{step.status === "current" ? "Atual" : step.id === next?.id ? "Próxima" : step.status === "completed" ? "Concluída" : step.status === "skipped" ? "Ignorada" : "A seguir"}</small></div>{showOwners && <span>{step.status === "current" ? project.owner || "Sem responsável definido" : step.assignee || "Sem responsável definido"}</span>}</div>
+      <i>{step.status === "completed" ? <CheckCircle2 /> : index + 1}</i><div className="workflow-step-content"><div className="workflow-step-heading"><b>{showStages ? step.stageName : 'Etapa ' + (index + 1)}</b><small>{step.status === "current" ? "Atual" : step.id === next?.id ? "Próxima" : step.status === "completed" ? "Concluída" : step.status === "skipped" ? "Ignorada" : "A seguir"}</small></div>{showOwners && <span>{step.status === "current" ? project.owner || "Sem responsável definido" : step.assignee || "Sem responsável definido"}</span>}{step.status === "completed" && <time>{workflowDate(step.startedAt)} – {workflowDate(step.completedAt)}</time>}</div>
     </li>)}</ol>
   </section>;
 }
@@ -2017,38 +2022,18 @@ function ProjectDetail({
               {(show("ownerId") || show("stage")) && <WorkflowOwners project={project} showStages={show("stage")} showOwners={show("ownerId")} />}
             </section>
 
-            <section className="process-section">
-              <div className="section-title-row">
-                <div>
-                  <h3>SLAs e responsáveis</h3>
-                  <p>Prazos configurados para o projeto e para cada etapa.</p>
-                </div>
-                <span className={`sla-summary ${sla.tone}`}>{sla.label}</span>
+            <section className="process-section reference-sla">
+              <header className="reference-sla-heading"><span className="division-number">3</span><div><h3>SLAs e responsáveis</h3><p>Prazos configurados para o projeto e para cada etapa.</p></div></header>
+              <div className="reference-sla-summary">
+                <div><CalendarDays /><span><small>SLA DO PROJETO</small><b>{formatSla(project.slaValue, project.slaUnit)}</b></span></div>
+                <div><Clock3 /><span><b className={sla.tone}>{sla.label}</b><progress className="reference-sla-progress" aria-label="Proporção de prazo restante" max={100} value={project.slaDueAt && Date.parse(project.slaDueAt) > Date.parse(project.openedAt) ? Math.max(0, Math.min(100, (Date.parse(project.slaDueAt) - Date.now()) / (Date.parse(project.slaDueAt) - Date.parse(project.openedAt)) * 100)) : 0} /></span></div>
+                <div><CalendarDays /><span><small>Prazo previsto</small><b>{workflowDate(project.slaDueAt)}</b></span></div>
               </div>
-              <div className="project-sla-total">
-                <div><Clock3 /><span><small>SLA total do projeto e da demanda</small><b>{formatSla(project.slaValue, project.slaUnit)}</b></span></div>
-                <strong className={sla.tone}>{sla.label}</strong>
-              </div>
-              {project.workflow.length ? (
-                <div className="sla-step-list">
-                  {project.workflow.map((step) => {
-                    const deadline = deadlineInfo(step.dueAt, step.slaUnit);
-                    const state = step.status === "completed"
-                      ? step.completedLate ? "Concluída com atraso" : "Concluída no prazo"
-                      : step.status === "current" ? "Etapa atual" : "Aguardando início";
-                    return (
-                      <article className={step.status === "current" ? "current" : ""} key={step.id}>
-                        <i>{step.order}</i>
-                        <div><b>{step.stageName}</b><span>{step.assignee}</span></div>
-                        <div><small>SLA da etapa</small><strong>{formatSla(step.slaValue, step.slaUnit)}</strong></div>
-                        <div><small>Situação</small><strong className={step.completedLate ? "late" : deadline.tone}>{state}{step.status === "current" ? ` · ${deadline.label}` : ""}</strong></div>
-                      </article>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="process-observation">Nenhum fluxo por responsável foi configurado para este projeto.</p>
-              )}
+              {project.workflow.length ? <div className="reference-sla-table-wrap"><table className="reference-sla-table"><thead><tr><th>#</th><th>Etapa</th><th>Responsável</th><th>SLA da etapa</th><th>Data de início</th><th>Prazo previsto</th><th>Situação</th></tr></thead><tbody>{[...project.workflow].sort((a,b)=>a.order-b.order).map(step => {
+                const deadline = deadlineInfo(step.dueAt, step.slaUnit);
+                const state = step.status === "completed" ? step.completedLate ? "Concluída com atraso" : "Concluída no prazo" : step.status === "current" ? deadline.label : step.status === "skipped" ? "Ignorada" : "Não iniciada";
+                return <tr key={step.id} className={step.status === "current" ? "current" : ""}><td><i>{step.order}</i></td><th scope="row">{step.stageName}</th><td>{step.assignee}</td><td>{formatSla(step.slaValue,step.slaUnit)}</td><td>{workflowDate(step.startedAt)}</td><td>{workflowDate(step.dueAt)}</td><td><span className={"reference-situation " + (step.status === "completed" ? step.completedLate ? "late" : "done" : step.status === "current" ? deadline.tone : "neutral")}>{step.status === "completed" ? <CheckCircle2 /> : <Clock3 />}{state}</span></td></tr>;
+              })}</tbody></table></div> : <p className="process-observation">Nenhum fluxo por responsável foi configurado para este projeto.</p>}
               {project.hasDelayedStep && currentStep && stepSla.tone !== "late" && (
                 <div className="sla-history-note">
                   <Clock3 />
