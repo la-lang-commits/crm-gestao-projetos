@@ -1265,65 +1265,35 @@ function Dashboard({
           </article>
         ))}
       </section>
-      <section className="dash-grid">
-        <article className="report activity-report">
-          <header><div><h2>Relatório de desempenho</h2><p>{period === "Semanal" ? "Semana atual · segunda a domingo" : "Últimos seis meses, incluindo o atual"}</p></div>
-            <div className="period">{["Semanal", "Mensal"].map(value => <button key={value} aria-pressed={period === value} className={period === value ? "active" : ""} onClick={() => setPeriod(value)}>{value}</button>)}</div>
-          </header>
-          <ActivityChart projects={projects} period={period} />
-          <footer>Projetos com abertura ou atualização registrada em cada período. O mesmo projeto conta uma vez por barra.</footer>
-        </article>
-        <article className="summary">
-          <header>
-            <h2>Resumo da área</h2>
-            <p>Visão consolidada da área</p>
-          </header>
-          <div className="ring">
-            <div>
-              <strong>
-                {projects.length
-                  ? Math.round(
-                      projects.reduce((a, p) => a + p.progress, 0) /
-                        projects.length,
-                    )
-                  : 0}
-                %
-              </strong>
-              <span>progresso</span>
-            </div>
-          </div>
-          <ul>
-            <li>
-              <i className="g" />
-              {counts[3].n} projetos concluídos
-            </li>
-            <li>
-              <i className="b" />
-              {counts[2].n} projetos em andamento
-            </li>
-            <li>
-              <i className="y" />
-              {counts[1].n} itens pendentes <b className="warn">atenção</b>
-            </li>
-          </ul>
-        </article>
-      </section>
-      <section className="recent">
-        <header>
-          <div>
-            <h2>Projetos por responsável</h2>
-            <p>Distribuição por responsável atual, nesta área</p>
-          </div>
-          <button onClick={openProjects}>Ver todos</button>
-        </header>
-        <OwnerChart projects={projects} members={members} />
-      </section>
-      <section className="recent">
-        <header><div><h2>Tempo por projeto</h2><p>Em dias corridos: tempo em aberto ou duração até a conclusão</p></div><button onClick={openReports}>Ver detalhes</button></header>
-        <DurationChart projects={projects} />
-      </section>
+      <DashboardSlaOverview projects={projects} />
+      <section className="recent reference-dashboard-card"><header><div><h2>Carga de trabalho por responsável</h2><p>Quantidade de projetos por responsável atual, distribuída por status.</p></div><button onClick={openProjects}>Ver todos ›</button></header><OwnerChart projects={projects} members={members} /></section>
+      <SlaConsumption projects={projects} openReports={openReports} />
+
     </>
   );
+}
+
+function DashboardSlaOverview({projects}: {projects: Project[]}) {
+  const active = projects.filter(p => !["Concluído", "Cancelado"].includes(p.status));
+  const groups = [{label:"No prazo",tone:"ok",color:"#316c63"},{label:"Atenção",tone:"warning",color:"#e6b847"},{label:"Atrasados",tone:"late",color:"#d95a43"},{label:"Sem prazo definido",tone:"neutral",color:"#b5b4ab"}].map(g=>({...g,count:active.filter(p=>slaInfo(p).tone===g.tone).length}));
+  let angle = 0;
+  const gradient = groups.map(g=>{const start=angle;angle+=active.length ? g.count/active.length*360 : 0;return g.color+' '+start+'deg '+angle+'deg'}).join(',');
+  const max = Math.max(1,...statuses.map(status=>projects.filter(p=>p.status===status).length));
+  return <section className="sla-dashboard-grid"><article className="recent reference-dashboard-card"><header><div><h2>Projetos por situação do SLA</h2><p>Visão geral dos prazos dos projetos ativos.</p></div><span className="dashboard-total">Projetos ativos<b>{active.length}</b></span></header><div className="sla-donut-body"><div className="sla-donut" role="img" aria-label={groups.map(g=>g.label+': '+g.count).join('; ')} style={{background:active.length ? 'conic-gradient('+gradient+')' : '#e5e4dc'}}><div><strong>{active.length}</strong><small>projetos</small></div></div><ul>{groups.filter(g=>g.tone!=="neutral" || g.count>0).map(g=><li key={g.tone}><i style={{background:g.color}}/><span>{g.label}{g.tone==="warning" && <small>Próximo do vencimento do SLA</small>}</span><b>{g.count}</b><em>{active.length ? Math.round(g.count/active.length*100) : 0}%</em></li>)}</ul></div></article>
+  <article className="recent reference-dashboard-card"><header><div><h2>Status geral dos projetos</h2><p>Quantidade de projetos por status atual.</p></div><span className="dashboard-total">Total de projetos<b>{projects.length}</b></span></header><div className="dashboard-status-chart">{statuses.map(status=>{const count=projects.filter(p=>p.status===status).length;return <div key={status}><div className="dashboard-status-bar"><span style={{height:count/max*100+'%',background:chartColors[status]}}><b>{count}</b></span></div><small>{status}</small></div>})}</div></article></section>;
+}
+function SlaConsumption({projects,openReports}: {projects: Project[];openReports:()=>void}) {
+  const [filter,setFilter]=useState("Todos os projetos");
+  const visible=projects.filter(p=>filter==="Todos os projetos" || p.status===filter);
+  return <section className="recent reference-dashboard-card consumption-card"><header><div><h2>Consumo do SLA por projeto</h2><p>Prazo já consumido em relação ao SLA total de cada projeto.</p></div><div className="consumption-actions"><select aria-label="Filtrar projetos por status" value={filter} onChange={e=>setFilter(e.target.value)}>{["Todos os projetos",...statuses].map(s=><option key={s}>{s}</option>)}</select><button onClick={openReports}>Ver detalhes</button></div></header><div className="chart-legend consumption-legend"><span><i style={{background:"#ce7943"}}/>Prazo consumido</span><span><i style={{background:"#e7e5e0"}}/>Prazo restante</span></div><ul className="consumption-rows">{visible.map(p=>{
+    const completed=p.status==="Concluído";
+    const end = completed ? p.events.filter(e=>e.toStatus==="Concluído" || e.toStage==="Concluído").map(e=>e.created_at).sort().at(-1) || (p.workflow.length && p.workflow.every(s=>s.status==="completed" || s.status==="skipped") ? p.workflow.map(s=>s.completedAt).filter(Boolean).sort().at(-1) : null) : new Date().toISOString();
+    const valid=!!p.slaDueAt && Number.isFinite(Date.parse(p.slaDueAt)) && p.slaValue>0 && !!end && p.status!=="Cancelado";
+    const remaining=valid ? Math.min(p.slaValue,remainingSlaUnits(new Date(end!),new Date(p.slaDueAt!),p.slaUnit)) : 0;
+    const consumed=p.slaValue-remaining;
+    const overdue=valid && Date.parse(end!)>Date.parse(p.slaDueAt!);
+    return <li key={p.id}><div><b>{p.name}</b><small>{ticket(p.ticket)}</small></div>{valid ? <div><div className="consumption-track" aria-label={formatSla(consumed,p.slaUnit)+' consumidos; '+formatSla(remaining,p.slaUnit)+' restantes'}><span style={{width:consumed/p.slaValue*100+'%'}} title={formatSla(consumed,p.slaUnit)+' consumidos'}>{consumed>0 && `${consumed} ${p.slaUnit === "hours" ? "h" : p.slaUnit === "months" ? "m" : "dias"}`}</span><span style={{width:remaining/p.slaValue*100+'%'}} title={formatSla(remaining,p.slaUnit)+' restantes'}>{remaining>0 && `${remaining} ${p.slaUnit === "hours" ? "h" : p.slaUnit === "months" ? "m" : "dias"}`}</span></div>{overdue && <small className="consumption-overdue">Prazo excedido em {formatSla(remainingSlaUnits(new Date(p.slaDueAt!),new Date(end!),p.slaUnit),p.slaUnit)}</small>}</div> : <span className="consumption-empty">{p.status==="Cancelado" ? "Projeto cancelado" : "Sem dados suficientes de prazo"}</span>}<div className="consumption-total"><small>SLA total</small><b>{formatSla(p.slaValue,p.slaUnit)}</b></div></li>;
+  })}</ul>{!visible.length && <p className="metrics-note">Nenhum projeto para este filtro.</p>}<p className="consumption-footnote">Cada barra representa 100% do SLA do projeto, respeitando sua unidade de prazo.</p></section>;
 }
 
 const chartColors: Record<string, string> = { Aberto: "#7f9b88", Pendente: "#c5a24c", "Em andamento": "#ce7943", "Concluído": "#235f5a", Cancelado: "#aaa49a" };
@@ -1336,11 +1306,11 @@ function ActivityChart({ projects, period }: { projects: Project[]; period: stri
 }
 function OwnerChart({ projects, members }: { projects: Project[]; members: Member[] }) {
   const rows = ownerCounts(projects, members);
-  const max = Math.max(1,...rows.map(r => r.total));
+  const max = Math.max(2,...rows.map(r => r.total));
   return <div className="horizontal-chart"><div className="chart-legend">{statuses.map(s => <span key={s}><i style={{background: chartColors[s]}} />{s}</span>)}</div>
     <ul>{rows.map(row => <li key={row.id}>
-      <span className="chart-row-label">{row.name}</span><div className="horizontal-track" aria-label={statuses.map(s => `${s}: ${row.counts[s] || 0}`).join('; ')}>{statuses.map(s => row.counts[s] ? <span key={s} title={`${s}: ${row.counts[s]}`} style={{width: `${row.counts[s] / max * 100}%`,background: chartColors[s]}} /> : null)}</div><b>{row.total}</b>
-    </li>)}</ul>{!rows.length && <p>Nenhum responsável cadastrado nesta área.</p>}<small>Quantidade de projetos por responsável atual.</small>
+      <span className="chart-row-label">{row.name}</span><div className="horizontal-track" aria-label={statuses.map(s => `${s}: ${row.counts[s] || 0}`).join('; ')}>{statuses.map(s => row.counts[s] ? <span key={s} title={`${s}: ${row.counts[s]}`} style={{width: `${row.counts[s] / max * 100}%`,background: chartColors[s]}}>{row.counts[s]}</span> : null)}</div><b>{row.total}</b>
+    </li>)}</ul><div className="owner-chart-axis"><span>0</span><span>{max}</span></div>{!rows.length && <p>Nenhum responsável cadastrado nesta área.</p>}<small>Quantidade de projetos por responsável atual.</small>
   </div>;
 }
 function DurationChart({ projects }: { projects: Project[] }) {

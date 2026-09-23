@@ -3798,3 +3798,47 @@
 .reference-sla-progress::-webkit-progress-value { background: #4e947b; border-radius: 8px; }
 .reference-sla-progress::-moz-progress-bar { background: #4e947b; border-radius: 8px; }
 .reference-sla-summary > div > span { flex: 1; }
+.sla-dashboard-grid { display:grid; grid-template-columns:1.05fr 1fr; gap:16px; margin:18px 0; }
+.reference-dashboard-card { margin-bottom:16px; }
+.reference-dashboard-card > header { border-bottom:0; padding:20px 22px 12px; }
+.reference-dashboard-card h2 { font-size:18px; font-weight:700; margin:0; }
+.reference-dashboard-card header p { margin:6px 0; font-size:13px; color:#7c7e76; }
+.dashboard-total { flex-shrink:0; display:grid; gap:3px; padding:10px 14px; text-align:center; background:#edf1eb; border-radius:7px; font-size:11px; color:#7c8178; }
+.dashboard-total b { font-size:23px; color:#174b48; }
+.sla-donut-body { display:flex; align-items:center; gap:26px; padding:18px 24px 26px; min-height:245px; }
+.sla-donut { width:190px; height:190px; border-radius:50%; flex-shrink:0; display:grid; place-items:center; }
+.sla-donut > div { width:112px; height:112px; border-radius:50%; background:#fbfaf7; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+.sla-donut strong { font-size:30px; color:#123f40; }
+.sla-donut small { font-size:12px; color:#6b766d; }
+.sla-donut-body ul { list-style:none; padding:0; margin:0; flex:1; }
+.sla-donut-body li { display:grid; grid-template-columns:12px 1fr 20px 40px; align-items:center; gap:10px; margin:22px 0; font-size:13px; }
+.sla-donut-body li i { width:12px; height:12px; border-radius:50%; }
+.sla-donut-body li small { display:block; margin-top:4px; color:#8b8b80; font-size:11px; }
+.sla-donut-body li em { font-style:normal; text-align:right; color:#7c8278; }
+.dashboard-status-chart { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; padding:32px 22px 24px; }
+.dashboard-status-chart > div { min-width:0; text-align:center; }
+.dashboard-status-bar { height:160px; display:flex; align-items:flex-end; justify-content:center; border-bottom:1px solid #e1ddd2; margin-bottom:13px; }
+.dashboard-status-bar > span { display:block; width:80%; max-width:100px; position:relative; border-radius:6px 6px 0 0; }
+.dashboard-status-bar b { position:absolute; top:-23px; left:0; right:0; font-size:14px; }
+.dashboard-status-chart small { font-size:11px; }
+.reference-dashboard-card .horizontal-track > span { display:grid; place-items:center; color:white; font-weight:700; font-size:12px; }
+.consumption-actions { display:flex; gap:12px; align-items:center; }
+.consumption-actions select { padding:9px 12px; border:1px solid #e0ddd3; border-radius:6px; background:#fff; font-size:12px; }
+.consumption-legend { padding:0 22px; }
+.consumption-rows { list-style:none; padding:0 22px; }
+.consumption-rows li { display:grid; grid-template-columns:minmax(180px,25%) minmax(0,1fr) 100px; gap:18px; align-items:center; margin:14px 0; }
+.consumption-rows li > div:first-child b { display:block; font-size:12px; font-weight:500; }
+.consumption-rows small { display:block; color:#898a80; font-size:11px; margin-top:4px; }
+.consumption-track { display:flex; height:27px; border-radius:5px; overflow:hidden; background:#e7e5e0; }
+.consumption-track span { display:grid; place-items:center; overflow:hidden; white-space:nowrap; font-size:11px; font-weight:600; }
+.consumption-track span:first-child { background:linear-gradient(100deg,#d28a51,#cd743a); color:white; }
+.consumption-track span:last-child { color:#777d73; }
+.consumption-total { text-align:right; font-size:12px; }
+.consumption-footnote { font-size:11px; color:#8b8b80; padding:0 22px 14px; }
+.consumption-empty { font-size:12px; color:#8b8b80; }
+.consumption-rows .consumption-overdue { color:#b85337; }
+@media(max-width:1100px) { .sla-dashboard-grid { grid-template-columns:1fr; } }
+@media(max-width:600px) { .sla-donut-body { flex-direction:column; } .sla-donut-body ul { width:100%; } .consumption-rows li { grid-template-columns:1fr; gap:6px; } .consumption-total { text-align:left; } .consumption-actions { flex-wrap:wrap; } }
+.reference-dashboard-card .horizontal-track { background:transparent; }
+.owner-chart-axis { display:flex; justify-content:space-between; margin:8px 60px 12px calc(28% + 12px); border-top:1px solid #dedcd2; padding-top:7px; color:#8b8b80; font-size:11px; }
+.consumption-actions button { padding:10px 16px; border:1px solid #e3dfd5; border-radius:6px; background:#eeeae1; color:#184a47; font-weight:600; font-size:12px; }
