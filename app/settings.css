@@ -3596,6 +3596,37 @@
 }
 
 /* Labels use the project's live label list, above its name. */
+.activity-chart { margin: 0; padding: 28px 24px 18px; }
+.activity-columns { display: flex; gap: 18px; height: 215px; align-items: stretch; }
+.activity-column { flex: 1; min-width: 0; text-align: center; display: flex; flex-direction: column; gap: 10px; }
+.activity-bar-space { position: relative; flex: 1; display: flex; align-items: flex-end; justify-content: center; border-bottom: 1px solid #dcd7cd; }
+.activity-bar { width: min(65%, 48px); border-radius: 7px 7px 0 0; background: #28736b; }
+.activity-bar-space b { position: absolute; top: -20px; font-size: 13px; color: #194e4d; }
+.activity-chart figcaption { margin-top: 18px; font-size: 12px; color: #81786b; }
+.horizontal-chart { padding: 24px; }
+.horizontal-chart ul { margin: 20px 0; padding: 0; list-style: none; display: grid; gap: 18px; max-height: 460px; overflow-y: auto; }
+.horizontal-chart li { display: grid; grid-template-columns: minmax(125px, 28%) 1fr 48px; align-items: center; gap: 14px; font-size: 13px; }
+.chart-row-label { overflow-wrap: anywhere; }
+.chart-row-label small { display: block; margin-top: 4px; color: #8c8072; }
+.horizontal-track { display: flex; height: 22px; background: #eeebe3; border-radius: 5px; overflow: hidden; }
+.horizontal-track > span { display: block; height: 100%; }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; }
+.chart-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.chart-legend i { width: 9px; height: 9px; border-radius: 50%; }
+.horizontal-chart > small { color: #81786b; font-size: 12px; }
+.workflow-owners { margin-top: 18px; border-top: 1px solid #e5dfd4; padding-top: 18px; }
+.workflow-owners h3 { font-size: 15px; margin: 0 0 7px; }
+.workflow-owners > p { color: #31665f; font-size: 13px; margin: 0 0 16px; line-height: 1.5; }
+.workflow-owners ol { display: flex; overflow-x: auto; gap: 12px; list-style: none; padding: 0 0 10px; margin: 0; }
+.workflow-owners li { position: relative; flex: 0 0 150px; border: 1px solid #e0dbd1; border-radius: 9px; padding: 12px; display: grid; gap: 6px; font-size: 12px; background: #fff; }
+.workflow-owners li.is-current { border: 2px solid #25665e; background: #e9f2ee; }
+.workflow-owners li.is-next { border-color: #d89b55; background: #fcf6e9; }
+.workflow-owners li.is-completed { background: #f1f4ef; }
+.workflow-owners li > i { width: 24px; height: 24px; display: grid; place-items: center; color: #25665e; font-style: normal; }
+.workflow-owners li svg { width: 20px; height: 20px; }
+.workflow-owners li b { overflow-wrap: anywhere; }
+.workflow-owners li > span, .workflow-owners li > small { color: #7c776c; }
+@media(max-width: 600px) { .horizontal-chart { padding: 16px; } .horizontal-chart li { grid-template-columns: 105px 1fr 36px; gap: 8px; } .activity-columns { gap: 8px; } }
 .ticket-field-preview { padding: 20px; }
 .preview-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding-bottom: 20px; }
 .preview-toolbar p, .preview-ticket-columns > section > p { font-size: 12px; color: #827c70; margin: 6px 0 16px; }

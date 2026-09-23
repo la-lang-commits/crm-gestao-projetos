@@ -58,7 +58,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/lib/supabase";
-import { ownerCounts, projectDuration } from "@/lib/project-metrics";
+import { activitySeries, nextWorkflowStep, ownerCounts, projectDuration } from "@/lib/project-metrics";
 
 type Role = "super" | "admin" | "member";
 type Status =
@@ -1266,10 +1266,12 @@ function Dashboard({
         ))}
       </section>
       <section className="dash-grid">
-        <article className="report duration-home">
-          <header><div><h2>Tempo dos projetos</h2><p>Da abertura à conclusão, em dias corridos</p></div></header>
-          <DurationSummary projects={projects} />
-          <footer><button className="primary" onClick={openReports}>Ver duração por projeto</button></footer>
+        <article className="report activity-report">
+          <header><div><h2>Relatório de desempenho</h2><p>{period === "Semanal" ? "Semana atual · segunda a domingo" : "Últimos seis meses, incluindo o atual"}</p></div>
+            <div className="period">{["Semanal", "Mensal"].map(value => <button key={value} aria-pressed={period === value} className={period === value ? "active" : ""} onClick={() => setPeriod(value)}>{value}</button>)}</div>
+          </header>
+          <ActivityChart projects={projects} period={period} />
+          <footer>Projetos com abertura ou atualização registrada em cada período. O mesmo projeto conta uma vez por barra.</footer>
         </article>
         <article className="summary">
           <header>
@@ -1314,12 +1316,53 @@ function Dashboard({
           </div>
           <button onClick={openProjects}>Ver todos</button>
         </header>
-        <OwnerSummary projects={projects} members={members} />
+        <OwnerChart projects={projects} members={members} />
+      </section>
+      <section className="recent">
+        <header><div><h2>Tempo por projeto</h2><p>Em dias corridos: tempo em aberto ou duração até a conclusão</p></div><button onClick={openReports}>Ver detalhes</button></header>
+        <DurationChart projects={projects} />
       </section>
     </>
   );
 }
 
+const chartColors: Record<string, string> = { Aberto: "#7f9b88", Pendente: "#c5a24c", "Em andamento": "#ce7943", "Concluído": "#235f5a", Cancelado: "#aaa49a" };
+function ActivityChart({ projects, period }: { projects: Project[]; period: string }) {
+  const data = activitySeries(projects, period);
+  const max = Math.max(1, ...data.map(d => d.value));
+  return <figure className="activity-chart" aria-label={`Projetos movimentados: ${period.toLowerCase()}`}><div className="activity-columns">{data.map(d => <div className="activity-column" key={d.label}>
+    <div className="activity-bar-space"><span className="activity-bar" style={{height: `${d.value / max * 100}%`}} /><b>{d.value}</b></div><small>{d.label}</small>
+  </div>)}</div><figcaption>Quantidade de projetos · {projects.length ? "dados da área selecionada" : "nenhum projeto cadastrado"}</figcaption></figure>;
+}
+function OwnerChart({ projects, members }: { projects: Project[]; members: Member[] }) {
+  const rows = ownerCounts(projects, members);
+  const max = Math.max(1,...rows.map(r => r.total));
+  return <div className="horizontal-chart"><div className="chart-legend">{statuses.map(s => <span key={s}><i style={{background: chartColors[s]}} />{s}</span>)}</div>
+    <ul>{rows.map(row => <li key={row.id}>
+      <span className="chart-row-label">{row.name}</span><div className="horizontal-track" aria-label={statuses.map(s => `${s}: ${row.counts[s] || 0}`).join('; ')}>{statuses.map(s => row.counts[s] ? <span key={s} title={`${s}: ${row.counts[s]}`} style={{width: `${row.counts[s] / max * 100}%`,background: chartColors[s]}} /> : null)}</div><b>{row.total}</b>
+    </li>)}</ul>{!rows.length && <p>Nenhum responsável cadastrado nesta área.</p>}<small>Quantidade de projetos por responsável atual.</small>
+  </div>;
+}
+function DurationChart({ projects }: { projects: Project[] }) {
+  const data = projects.map(project => ({project, days: projectDuration(project)})).filter((row): row is { project: Project; days: number } => row.days !== null).sort((a,b) => b.days-a.days);
+  const max = Math.max(1,...data.map(row => row.days));
+  return <div className="horizontal-chart duration-bars"><div className="chart-legend"><span><i style={{background:"#ce7943"}} />Em aberto: tempo até hoje</span><span><i style={{background:"#235f5a"}} />Concluído: duração total</span></div>
+    <ul>{data.map(({project,days}) => <li key={project.id}><span className="chart-row-label">{project.name}<small>{ticket(project.ticket)}</small></span><div className="horizontal-track"><span style={{width:`${days/max*100}%`,background:project.status === "Concluído" ? "#235f5a" : "#ce7943"}} /></div><b>{days} d</b></li>)}</ul>
+    {!data.length && <p>Ainda não há projetos com datas suficientes para este gráfico.</p>}
+    <small>Dias corridos; não é uma previsão de entrega. Cancelados e concluídos sem data registrada ficam fora do gráfico.</small>
+  </div>;
+}
+function WorkflowOwners({ project, showStages = true }: { project: Project; showStages?: boolean }) {
+  const steps = [...project.workflow].sort((a,b) => a.order-b.order);
+  const current = steps.find(s => s.status === "current");
+  const next = nextWorkflowStep(steps);
+  return <section className="workflow-owners" aria-label="Esteira de responsáveis">
+    <h3>Esteira de responsáveis</h3><p>{current ? next ? `Ao encaminhar: ${next.assignee || "Sem responsável definido"}${showStages ? ` · ${next.stageName}` : ""}` : "Última etapa: ao confirmar, o projeto será concluído." : project.status === "Concluído" ? "Fluxo concluído." : "Nenhuma etapa atual configurada."}</p>
+    <ol>{steps.map(step => <li key={step.id} className={step.status === "current" ? "is-current" : step.id === next?.id ? "is-next" : step.status === "completed" ? "is-completed" : ""} aria-current={step.status === "current" ? "step" : undefined}>
+      <i>{step.status === "completed" ? <CheckCircle2 /> : step.order}</i><small>{step.status === "current" ? "Agora" : step.id === next?.id ? "Próximo" : step.status === "completed" ? "Concluída" : step.status === "skipped" ? "Ignorada" : "A seguir"}</small><b>{step.status === "current" ? project.owner : step.assignee || "Sem responsável definido"}</b>{showStages && <span>{step.stageName}</span>}
+    </li>)}</ol>
+  </section>;
+}
 function OwnerSummary({ projects, members }: { projects: Project[]; members: Member[] }) {
   const rows = ownerCounts(projects, members);
   return <div className="metrics-table-wrap"><table className="metrics-table">
@@ -2004,18 +2047,7 @@ function ProjectDetail({
                   </button>
                 </div>
               )}
-              <div className="status-pipeline" aria-label={`Esteira do processo: ${project.status}`}>
-                <div className="status-pipeline-title"><Activity /><span><b>Esteira do processo</b><small>Atualizada automaticamente pelo status</small></span></div>
-                <div className="status-pipeline-track">
-                  {timelineStatuses.map((status, index) => {
-                    const cancelled = project.status === "Cancelado";
-                    const state = cancelled
-                      ? status === "Cancelado" ? "current cancelled" : ""
-                      : status === "Cancelado" ? "" : index < timelineIndex ? "completed" : index === timelineIndex ? "current" : "";
-                    return <div className={`status-pipeline-step ${state}`} key={status}><i>{state.includes("completed") ? <CheckCircle2 /> : <span />}</i><small>{status}</small></div>;
-                  })}
-                </div>
-              </div>
+              {show("ownerId") && <WorkflowOwners project={project} showStages={show("stage")} />}
             </section>
 
             <section className="process-section">
@@ -4316,8 +4348,8 @@ function EditProject({
                     project.workflow.find((step) => step.status === "current")
                       ?.stageName
                   }
-                  {project.workflow.some((step) => step.status === "pending")
-                    ? " → encaminhar para a próxima pessoa"
+                  {nextWorkflowStep(project.workflow)
+                    ? ` → ${nextWorkflowStep(project.workflow)?.assignee || "Sem responsável definido"} · ${nextWorkflowStep(project.workflow)?.stageName}`
                     : " → concluir o projeto"}
                 </span>
               </div>
