@@ -3846,3 +3846,9 @@
 .reference-dashboard-card .status-period button { padding:7px 12px; font-size:11px; border:0; border-radius:6px; background:transparent; color:#807e72; cursor:pointer; }
 .reference-dashboard-card .status-period button.active { background:#fff; color:#174e49; box-shadow:0 1px 3px #00000012; font-weight:700; }
 .status-period button:focus-visible { outline:2px solid #205e56; outline-offset:2px; }
+.ticket-export { display:flex; flex-direction:column; gap:5px; }
+.ticket-export button { display:inline-flex; align-items:center; justify-content:center; gap:7px; padding:9px 13px; border:1px solid #c5d6cd; border-radius:7px; background:#eaf2ec; color:#205e56; font-size:12px; font-weight:600; cursor:pointer; }
+.ticket-export button:disabled { opacity:.6; cursor:wait; }
+.ticket-export svg { width:16px; height:16px; }
+.ticket-export small { color:#b44838; font-size:11px; }
+.projects-surface > header > .ticket-export { margin-left:auto; margin-right:12px; }

@@ -1386,6 +1386,28 @@ type ListProps = {
   requestDelete?: (p: Project) => void;
   canDelete?: boolean;
 };
+function ExportTicketsButton({projects,fields}: {projects:Project[];fields:FieldDef[]}) {
+ const [busy,setBusy]=useState(false);
+ const [error,setError]=useState("");
+ const download=async()=>{
+  setBusy(true);setError("");
+  try {
+   const {createTicketWorkbook}=await import("@/lib/ticket-excel");
+   const date=(value:string|null|undefined)=>value ? new Date(value.length===10 ? value+'T12:00:00' : value).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',...(value.length===10 ? {year:'numeric',month:'2-digit',day:'2-digit'} as const : {})}) : '';
+   const sheets=[
+    {name:'Tickets',headers:['Ticket','Projeto','Demanda','Nº do SEI','Status','Prioridade','Responsável atual','Etapa atual','Data de abertura','Última atualização','SLA total','Prazo previsto','Situação do SLA','Etiquetas'],rows:projects.map(p=>[ticket(p.ticket),p.name,p.demand,p.sei,p.status,p.priority,p.owner,p.stage,date(p.openedAt),date(p.updatedAt),formatSla(p.slaValue,p.slaUnit),date(p.slaDueAt),slaInfo(p).label,p.labels.map(l=>l.label_text).join('; ')])},
+    {name:'Etapas',headers:['Ticket','Projeto','Ordem','Etapa','Responsável','SLA','Início','Prazo previsto','Conclusão','Situação'],rows:projects.flatMap(p=>[...p.workflow].sort((a,b)=>a.order-b.order).map(w=>[ticket(p.ticket),p.name,w.order,w.stageName,w.assignee,formatSla(w.slaValue,w.slaUnit),date(w.startedAt),date(w.dueAt),date(w.completedAt),w.status==='completed' ? w.completedLate ? 'Concluída com atraso' : 'Concluída no prazo' : w.status==='current' ? 'Atual · '+deadlineInfo(w.dueAt,w.slaUnit).label : w.status==='skipped' ? 'Ignorada' : 'Não iniciada']))},
+    {name:'Histórico e comentários',headers:['Ticket','Projeto','Data (Brasília)','Tipo','Autor','Referente a','Descrição','Etapa anterior','Etapa seguinte','Responsável anterior','Responsável seguinte'],rows:projects.flatMap(p=>[...p.events].sort((a,b)=>a.created_at.localeCompare(b.created_at)).map(e=>[ticket(p.ticket),p.name,date(e.created_at),e.eventType,e.actor?.full_name||'',e.subject?.full_name||'',e.justification,e.fromStage||'',e.toStage||'',e.fromOwner?.full_name||'',e.toOwner?.full_name||'']))},
+    {name:'Campos adicionais',headers:['Ticket','Projeto','Campo','Valor'],rows:projects.flatMap(p=>fields.filter(f=>!f.system && f.areaId===p.areaId).map(f=>[ticket(p.ticket),p.name,f.label,p.customValues.find(v=>v.field_id===f.id)?.value||'']))},
+    {name:'Anexos',headers:['Ticket','Projeto','Arquivo','Tipo','Tamanho (bytes)','Enviado por','Data'],rows:projects.flatMap(p=>p.attachments.map(a=>[ticket(p.ticket),p.name,a.fileName,a.mimeType,a.sizeBytes,a.uploader,date(a.createdAt)]))}
+   ];
+   const buffer=await createTicketWorkbook(sheets);
+   const blob=new Blob([new Uint8Array(buffer)],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+   const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=(projects.length===1 ? ticket(projects[0].ticket) : 'relatorio-tickets')+'-'+new Date().toISOString().slice(0,10)+'.xlsx';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  } catch {setError('Não foi possível gerar o Excel. Tente novamente.');} finally {setBusy(false);}
+ };
+ return <div className="ticket-export"><button type="button" onClick={download} disabled={busy || !projects.length}>{busy ? <Loader2 className="spin"/> : <Download/>}{busy ? 'Gerando Excel...' : 'Baixar Excel'}</button>{error && <small role="alert">{error}</small>}</div>;
+}
 function ProjectsView(
   props: ListProps & {
     mode: "list" | "kanban";
@@ -1400,6 +1422,7 @@ function ProjectsView(
           <h2>Projetos</h2>
           <p>Alterne entre a visão detalhada e o fluxo por status.</p>
         </div>
+        <ExportTicketsButton projects={props.projects} fields={props.fields} />
         <div className="view-switch">
           <button
             className={mode === "list" ? "active" : ""}
@@ -1837,6 +1860,7 @@ function ProjectDetail({
           <DialogTitle className="sr-only">Processo {ticket(project.ticket)}</DialogTitle>
           <DialogDescription className="sr-only">Detalhes, prazos e histórico do processo.</DialogDescription>
           <div className="process-header-start">
+            <ExportTicketsButton projects={[project]} fields={fields} />
             <div className="process-kicker">
               <span>{ticket(project.ticket)}</span>
             </div>
