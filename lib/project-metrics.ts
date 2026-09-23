@@ -55,3 +55,9 @@ export function ownerCounts(projects: { ownerId: string; owner: string; status: 
   }
   return [...rows.values()].sort((a,b) => b.total - a.total || a.name.localeCompare(b.name, 'pt-BR'));
 }
+
+export function projectsInPeriod<T extends { openedAt: string; updatedAt: string; events: { created_at: string }[] }>(projects:T[], period:string, now=new Date().toISOString()):T[] {
+ const today=new Date(calendarDay(now));
+ const start=period==='Semanal' ? today.getTime()-((today.getUTCDay()+6)%7)*86400000 : Date.UTC(today.getUTCFullYear(),today.getUTCMonth(),1);
+ return projects.filter(p=>[p.openedAt,p.updatedAt,...p.events.map(e=>e.created_at)].some(value=>{const day=calendarDay(value);return day>=start && day<=today.getTime();}));
+}

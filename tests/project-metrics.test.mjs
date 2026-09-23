@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { projectDuration, ownerCounts, activitySeries, nextWorkflowStep } from '../lib/project-metrics.ts';
+import { projectDuration, ownerCounts, activitySeries, nextWorkflowStep, projectsInPeriod } from '../lib/project-metrics.ts';
 const project = { status: 'Em andamento', openedAt: '2026-09-21', events: [], workflow: [] };
 test('uses calendar days in São Paulo, including same-day projects', () => {
   assert.equal(projectDuration(project, '2026-09-22T01:00:00Z'), 0);
@@ -39,4 +39,12 @@ test('counts identities separately and retains zero and unassigned rows', () => 
  assert.equal(nextWorkflowStep([{order:1,status:'current'}]),undefined);
  assert.equal(nextWorkflowStep([{order:1,status:'completed'}]),undefined);
  });
+
+
+test('period filter uses current week or month and counts each project once', () => {
+ const make=(id,openedAt,events=[])=>({id,openedAt,updatedAt:'',events});
+ const rows=[make('old','2026-08-01'),make('month','2026-09-03'),make('week','2026-09-21'),make('event','2026-08-01',[{created_at:'2026-09-23T15:00:00Z'}]),make('future','2026-09-25'),make('localSunday','2026-09-21T01:00:00Z')];
+ assert.deepEqual(projectsInPeriod(rows,'Semanal','2026-09-23T15:00:00Z').map(p=>p.id),['week','event']);
+ assert.deepEqual(projectsInPeriod(rows,'Mensal','2026-09-23T15:00:00Z').map(p=>p.id),['month','week','event','localSunday']);
+});
 

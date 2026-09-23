@@ -58,7 +58,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { supabase } from "@/lib/supabase";
-import { activitySeries, nextWorkflowStep, ownerCounts, projectDuration } from "@/lib/project-metrics";
+import { activitySeries, nextWorkflowStep, ownerCounts, projectDuration, projectsInPeriod } from "@/lib/project-metrics";
 
 type Role = "super" | "admin" | "member";
 type Status =
@@ -1265,7 +1265,7 @@ function Dashboard({
           </article>
         ))}
       </section>
-      <DashboardSlaOverview projects={projects} />
+      <DashboardSlaOverview projects={projects} period={period} setPeriod={setPeriod} />
       <section className="recent reference-dashboard-card"><header><div><h2>Carga de trabalho por responsável</h2><p>Quantidade de projetos por responsável atual, distribuída por status.</p></div><button onClick={openProjects}>Ver todos ›</button></header><OwnerChart projects={projects} members={members} /></section>
       <SlaConsumption projects={projects} openReports={openReports} />
 
@@ -1273,14 +1273,15 @@ function Dashboard({
   );
 }
 
-function DashboardSlaOverview({projects}: {projects: Project[]}) {
+function DashboardSlaOverview({projects,period,setPeriod}: {projects: Project[];period:string;setPeriod:(value:string)=>void}) {
+  const periodProjects = projectsInPeriod(projects,period);
   const active = projects.filter(p => !["Concluído", "Cancelado"].includes(p.status));
   const groups = [{label:"No prazo",tone:"ok",color:"#316c63"},{label:"Atenção",tone:"warning",color:"#e6b847"},{label:"Atrasados",tone:"late",color:"#d95a43"},{label:"Sem prazo definido",tone:"neutral",color:"#b5b4ab"}].map(g=>({...g,count:active.filter(p=>slaInfo(p).tone===g.tone).length}));
   let angle = 0;
   const gradient = groups.map(g=>{const start=angle;angle+=active.length ? g.count/active.length*360 : 0;return g.color+' '+start+'deg '+angle+'deg'}).join(',');
-  const max = Math.max(1,...statuses.map(status=>projects.filter(p=>p.status===status).length));
+  const max = Math.max(1,...statuses.map(status=>periodProjects.filter(p=>p.status===status).length));
   return <section className="sla-dashboard-grid"><article className="recent reference-dashboard-card"><header><div><h2>Projetos por situação do SLA</h2><p>Visão geral dos prazos dos projetos ativos.</p></div><span className="dashboard-total">Projetos ativos<b>{active.length}</b></span></header><div className="sla-donut-body"><div className="sla-donut" role="img" aria-label={groups.map(g=>g.label+': '+g.count).join('; ')} style={{background:active.length ? 'conic-gradient('+gradient+')' : '#e5e4dc'}}><div><strong>{active.length}</strong><small>projetos</small></div></div><ul>{groups.filter(g=>g.tone!=="neutral" || g.count>0).map(g=><li key={g.tone}><i style={{background:g.color}}/><span>{g.label}{g.tone==="warning" && <small>Próximo do vencimento do SLA</small>}</span><b>{g.count}</b><em>{active.length ? Math.round(g.count/active.length*100) : 0}%</em></li>)}</ul></div></article>
-  <article className="recent reference-dashboard-card"><header><div><h2>Status geral dos projetos</h2><p>Quantidade de projetos por status atual.</p></div><span className="dashboard-total">Total de projetos<b>{projects.length}</b></span></header><div className="dashboard-status-chart">{statuses.map(status=>{const count=projects.filter(p=>p.status===status).length;return <div key={status}><div className="dashboard-status-bar"><span style={{height:count/max*100+'%',background:chartColors[status]}}><b>{count}</b></span></div><small>{status}</small></div>})}</div></article></section>;
+  <article className="recent reference-dashboard-card"><header><div><h2>Status geral dos projetos</h2><p>{period === "Semanal" ? "Semana atual · desde segunda-feira" : "Mês atual"} · status atual dos projetos movimentados.</p><div className="status-period" role="group" aria-label="Período do gráfico">{["Semanal","Mensal"].map(value=><button key={value} aria-pressed={period===value} className={period===value ? "active" : ""} onClick={()=>setPeriod(value)}>{value}</button>)}</div></div><span className="dashboard-total">Total no período<b>{periodProjects.length}</b></span></header><div className="dashboard-status-chart">{statuses.map(status=>{const count=periodProjects.filter(p=>p.status===status).length;return <div key={status}><div className="dashboard-status-bar"><span style={{height:count/max*100+'%',background:chartColors[status]}}><b>{count}</b></span></div><small>{status}</small></div>})}</div></article></section>;
 }
 function SlaConsumption({projects,openReports}: {projects: Project[];openReports:()=>void}) {
   const [filter,setFilter]=useState("Todos os projetos");

@@ -3842,3 +3842,7 @@
 .reference-dashboard-card .horizontal-track { background:transparent; }
 .owner-chart-axis { display:flex; justify-content:space-between; margin:8px 60px 12px calc(28% + 12px); border-top:1px solid #dedcd2; padding-top:7px; color:#8b8b80; font-size:11px; }
 .consumption-actions button { padding:10px 16px; border:1px solid #e3dfd5; border-radius:6px; background:#eeeae1; color:#184a47; font-weight:600; font-size:12px; }
+.status-period { display:inline-flex; gap:3px; background:#eeeae1; border-radius:8px; padding:3px; margin-top:8px; }
+.reference-dashboard-card .status-period button { padding:7px 12px; font-size:11px; border:0; border-radius:6px; background:transparent; color:#807e72; cursor:pointer; }
+.reference-dashboard-card .status-period button.active { background:#fff; color:#174e49; box-shadow:0 1px 3px #00000012; font-weight:700; }
+.status-period button:focus-visible { outline:2px solid #205e56; outline-offset:2px; }
