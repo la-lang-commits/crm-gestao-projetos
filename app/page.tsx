@@ -969,7 +969,7 @@ function Workspace({ user }: { user: any }) {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar ticket, SEI, projeto ou demanda..."
+              placeholder={view === "Tarefas" ? "Buscar tarefa, projeto, responsável..." : "Buscar ticket, SEI, projeto ou demanda..."}
             />
           </label>
           <Bell />
@@ -1006,7 +1006,7 @@ function Workspace({ user }: { user: any }) {
               <span>
                 {view === "Início"
                   ? "Acompanhe prazos, etapas e movimentações da sua área."
-                  : view === "Tarefas" ? "Acompanhe suas tarefas e as da sua equipe." : view === "Configurações"
+                  : view === "Tarefas" ? "Acompanhe suas atividades e as demandas da equipe." : view === "Configurações"
                     ? "Defina o catálogo e os campos usados nos tickets desta área."
                     : projects.length +
                       " projetos visíveis somente para esta área."}
