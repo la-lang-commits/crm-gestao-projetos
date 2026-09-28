@@ -57,6 +57,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { TasksBoard } from "@/components/tasks-board";
 import { supabase } from "@/lib/supabase";
 import { activitySeries, nextWorkflowStep, ownerCounts, projectDuration, projectsInPeriod } from "@/lib/project-metrics";
 
@@ -924,7 +925,7 @@ function Workspace({ user }: { user: any }) {
             active={view === "Projetos"}
             click={() => setView("Projetos")}
           />
-          <Nav icon={<List />} label="Tarefas" />
+          <Nav icon={<List />} label="Tarefas" active={view === "Tarefas"} click={() => setView("Tarefas")} />
           <Nav icon={<CalendarDays />} label="Calendário" />
           <Nav icon={<BarChart3 />} label="Relatórios" active={view === "Relatórios"} click={() => setView("Relatórios")} />
         </nav>
@@ -998,24 +999,24 @@ function Workspace({ user }: { user: any }) {
               <h1>
                 {view === "Início"
                   ? "Olá, " + name.split(" ")[0] + "!"
-                  : view === "Configurações"
+                  : view === "Tarefas" ? "Tarefas" : view === "Configurações"
                     ? "Configurações"
                     : current?.name || "Sem área"}
               </h1>
               <span>
                 {view === "Início"
                   ? "Acompanhe prazos, etapas e movimentações da sua área."
-                  : view === "Configurações"
+                  : view === "Tarefas" ? "Acompanhe suas tarefas e as da sua equipe." : view === "Configurações"
                     ? "Defina o catálogo e os campos usados nos tickets desta área."
                     : projects.length +
                       " projetos visíveis somente para esta área."}
               </span>
             </div>
             <div className="heading-actions">
-              <span className="role-badge">
+              {view !== "Tarefas" && <span className="role-badge">
                 <ShieldCheck />
                 {roleLabels[role]}
-              </span>
+              </span>}
               {view === "Projetos" && areaId && (
                 <NewProject
                   open={newOpen}
@@ -1071,6 +1072,8 @@ function Workspace({ user }: { user: any }) {
               members={areaMembers}
               openReports={() => setView("Relatórios")}
             />
+          ) : view === "Tarefas" ? (
+            <TasksBoard key={areaId} areaId={areaId} userId={user.id} projects={allProjects.filter(p=>p.areaId===areaId)} members={scopedMembers} globalQuery={query} />
           ) : view === "Relatórios" ? (
             <DurationReport projects={projects} openProject={setDetailProject} />
           ) : (
