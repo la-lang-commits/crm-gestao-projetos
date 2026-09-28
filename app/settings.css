@@ -3883,3 +3883,24 @@
 .projects-surface > header { gap:12px; flex-wrap:wrap; }
 .projects-surface > header h2 { font-size:19px; }
 .projects-surface > header p { font-size:13px; }
+/* Keep table columns within the available panel and align workflow labels. */
+.projects-surface .project-table { min-width:1060px; }
+.projects-surface .project-table-head,.projects-surface .project-table-row { grid-template-columns:minmax(180px,1.35fr) minmax(330px,2.45fr) minmax(110px,.8fr) minmax(112px,.85fr) minmax(125px,.9fr) 80px 30px; gap:10px; padding-left:20px; padding-right:20px; }
+.projects-surface .project-table-head > *,.projects-surface .project-table-row > * { min-width:0; }
+.projects-surface .project-table-head { font-size:12px; }
+.projects-surface .project-table-row { min-height:162px; }
+.projects-surface .table-stage-flow { padding:6px 2px; align-items:flex-start; }
+.projects-surface .table-stage-flow > div { min-width:78px; display:grid; grid-template-rows:32px 38px minmax(26px,auto); justify-items:center; align-items:start; gap:7px; padding:0 3px; }
+.projects-surface .table-stage-flow i { width:28px; height:28px; line-height:1; font-size:16px; border-width:3px; margin:2px 0; }
+.projects-surface .table-stage-flow > div > span { top:15px; }
+.projects-surface .table-stage-flow small { margin:0; font-size:11px; line-height:1.4; align-self:center; }
+.projects-surface .flow-state,.projects-surface .flow-time { margin:0; align-self:start; text-align:center; font-size:10px; padding:3px 6px; }
+.projects-surface .table-owner { gap:8px; }
+.projects-surface .table-owner span { white-space:normal; overflow-wrap:anywhere; font-size:12px; }
+.projects-surface .table-owner i { flex-shrink:0; }
+.projects-surface .table-status .pill { font-size:11px; padding:7px 9px; white-space:normal; text-align:center; }
+.projects-surface .table-status small { font-size:11px; }
+.projects-surface .project-table-row > time { font-size:12px; }
+.projects-surface .priority-pill { justify-self:start; font-size:11px; padding:7px 10px; }
+.projects-surface .project-cell-name b { font-size:15px; }
+.projects-surface .project-table-head > span:nth-child(6),.projects-surface .project-table-row > .priority-pill { justify-self:center; }
