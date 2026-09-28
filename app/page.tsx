@@ -1468,15 +1468,13 @@ function ProjectTable({
         {projects.length ? (
           projects.map((project) => {
             const flow = project.workflow.length
-              ? project.workflow
+              ? [...project.workflow].sort((a,b)=>a.order-b.order)
               : stages.map((stageName, order) => ({
                   id: stageName,
                   stageName,
                   order,
                   status:
-                    order <= stages.indexOf(project.stage)
-                      ? "completed"
-                      : "pending",
+                    order < stages.indexOf(project.stage) ? "completed" : order === stages.indexOf(project.stage) ? "current" : "pending",
                   completedLate: false,
                 }));
             return (
@@ -1507,9 +1505,10 @@ function ProjectTable({
                       key={step.id}
                       title={step.stageName}
                     >
-                      <i>{step.status === "completed" ? "✓" : ""}</i>
+                      <i>{step.completedLate ? "!" : step.status === "completed" ? "✓" : ""}</i>
                       {index < flow.length - 1 && <span />}
                       <small>{step.stageName}</small>
+                      <em className={step.completedLate ? "flow-state late" : step.status === "completed" ? "flow-state done" : step.status === "current" ? "flow-time" : "flow-state pending"}>{step.completedLate ? "Concluída com atraso" : step.status === "completed" ? "Concluído" : step.status === "current" ? timeInCurrentStep(project) : step.status === "skipped" ? "Ignorada" : "Pendente"}</em>
                     </div>
                   ))}
                 </div>

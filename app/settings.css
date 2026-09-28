@@ -3852,3 +3852,34 @@
 .ticket-export svg { width:16px; height:16px; }
 .ticket-export small { color:#b44838; font-size:11px; }
 .projects-surface > header > .ticket-export { margin-left:auto; margin-right:12px; }
+/* Project list: readable workflow overview. */
+.projects-surface .project-table { min-width:1180px; }
+.projects-surface .project-table-head,.projects-surface .project-table-row { grid-template-columns:minmax(230px,1.25fr) minmax(420px,2.6fr) 145px 135px 160px 100px 34px; gap:12px; padding-left:22px; padding-right:22px; }
+.projects-surface .project-table-head { min-height:52px; font-size:13px; }
+.projects-surface .project-table-row { min-height:156px; padding-top:22px; padding-bottom:22px; }
+.projects-surface .project-cell-name { align-self:stretch; display:flex; flex-direction:column; justify-content:center; }
+.projects-surface .project-cell-name b { font-size:16px; line-height:1.4; color:#123f40; }
+.projects-surface .project-cell-name small { font-size:12px; margin-top:6px; }
+.projects-surface .project-cell-name p { font-size:13px; white-space:normal; margin-top:5px; }
+.projects-surface .table-stage-flow { padding:4px 10px; overflow-x:auto; }
+.projects-surface .table-stage-flow > div { min-width:95px; text-align:center; display:flex; flex-direction:column; align-items:center; padding:0 4px; }
+.projects-surface .table-stage-flow i { width:28px; height:28px; font-size:19px; border-width:5px; background:#fff; flex-shrink:0; }
+.projects-surface .table-stage-flow > div > span { top:13px; left:50%; right:auto; width:100%; height:3px; }
+.projects-surface .table-stage-flow .active i { background:#187a69; border-color:#187a69; }
+.projects-surface .table-stage-flow .current i { border:4px solid #fff; background:#205e56; outline:2px solid #205e56; box-shadow:0 0 0 4px #eaf2ed; }
+.projects-surface .table-stage-flow .late-step i { background:#c65b51; border-color:#c65b51; }
+.projects-surface .table-stage-flow .late-step > span { background:#c65b51; }
+.projects-surface .table-stage-flow small { max-width:none; width:100%; white-space:normal; overflow:visible; font-size:12px; line-height:1.35; margin-top:13px; color:#30504b; }
+.projects-surface .table-stage-flow .current small { font-weight:700; color:#123f40; }
+.projects-surface .flow-state,.projects-surface .flow-time { font-style:normal; font-size:11px; line-height:1.4; margin-top:6px; padding:3px 7px; border-radius:12px; }
+.projects-surface .flow-state.done { background:#e4f0e9; color:#176252; }
+.projects-surface .flow-state.pending { background:#efeeea; color:#757a73; }
+.projects-surface .flow-state.late { background:#f8e5df; color:#b03e31; }
+.projects-surface .flow-time { color:#7a7a70; padding-left:0; padding-right:0; }
+.projects-surface .table-status small { font-size:12px; margin-top:8px; }
+.projects-surface .table-status .pill,.projects-surface .priority-pill { font-size:12px; padding:7px 10px; }
+.projects-surface .project-table-row > time,.projects-surface .table-owner { font-size:13px; }
+.projects-surface .table-owner i { width:34px; height:34px; font-size:12px; }
+.projects-surface > header { gap:12px; flex-wrap:wrap; }
+.projects-surface > header h2 { font-size:19px; }
+.projects-surface > header p { font-size:13px; }
