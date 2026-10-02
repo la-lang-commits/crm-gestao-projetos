@@ -106,7 +106,9 @@ type Event = {
   toStage?: string;
   toStatus?: string;
 };
+type CatalogProject = { id: string; name: string; sei_number: string; area_id: string };
 type CatalogItem = {
+  projectId?: string;
   sei?: string;
   id: string;
   areaId: string;
@@ -498,7 +500,7 @@ function Workspace({ user }: { user: any }) {
       supabase
         .from("service_catalog")
         .select(
-          "id,area_id,project_name,demand_name,sei_number,sla_days,sla_value,sla_unit,active,workflow:service_catalog_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,assignee:profiles!service_catalog_workflow_steps_assignee_id_fkey(full_name))",
+          "id,area_id,catalog_project_id,project_name,demand_name,sei_number,sla_days,sla_value,sla_unit,active,workflow:service_catalog_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,assignee:profiles!service_catalog_workflow_steps_assignee_id_fkey(full_name))",
         )
         .order("project_name"),
       supabase
@@ -559,6 +561,7 @@ function Workspace({ user }: { user: any }) {
         id: c.id,
         areaId: c.area_id,
         projectName: c.project_name,
+        projectId: c.catalog_project_id,
         sei: c.sei_number || "",
         demandName: c.demand_name,
         slaDays: c.sla_days,
@@ -3163,8 +3166,18 @@ function Configuration({
   fail: (x: string) => void;
 }) {
   const [tab, setTab] = useState<"catalog" | "fields" | "areas">("catalog");
-  const [projectName, setProjectName] = useState("");
-  const [catalogSei, setCatalogSei] = useState("");
+  const [catalogProjects, setCatalogProjects] = useState<CatalogProject[]>([]);
+  const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [projectEditor, setProjectEditor] = useState<{ id?: string; name: string; sei_number: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    supabase.from("catalog_projects").select("id,name,sei_number,area_id").eq("area_id", areaId).order("name").then(({ data, error }) => {
+      if (cancelled) return;
+      if (error) { fail(error.message); return; }
+      setCatalogProjects(data || []);
+    });
+    return () => { cancelled = true; };
+  }, [areaId, catalog]);
   const [showCatalogForm, setShowCatalogForm] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState("");
   const [demandName, setDemandName] = useState("");
@@ -3225,28 +3238,34 @@ function Configuration({
   }
 
   async function addCatalog() {
-    if (!projectName.trim() || !demandName.trim())
-      return fail("Informe projeto e demanda.");
+    if (!selectedProjectId || !demandName.trim())
+      return fail("Selecione o projeto e informe a demanda.");
     const ok = await run(
       () =>
         supabase.from("service_catalog").insert({
           area_id: areaId,
-          project_name: projectName.trim(),
-          sei_number: catalogSei.trim(),
+          catalog_project_id: selectedProjectId,
           demand_name: demandName.trim(),
           sla_days: sla,
           sla_value: sla,
           sla_unit: slaUnit,
           created_by: userId,
         }),
-      "Projeto e demanda adicionados.",
+      "Demanda vinculada ao projeto.",
     );
     if (ok) {
-      setProjectName("");
       setDemandName("");
-      setCatalogSei("");
       setShowCatalogForm(false);
     }
+  }
+
+  async function saveCatalogProject() {
+    if (!projectEditor || projectEditor.name.trim().length < 2) return fail("Informe o nome do projeto.");
+    const values = { name: projectEditor.name.trim(), sei_number: projectEditor.sei_number.trim() };
+    const ok = await run(() => projectEditor.id
+      ? supabase.from("catalog_projects").update(values).eq("id", projectEditor.id).eq("area_id", areaId)
+      : supabase.from("catalog_projects").insert({ ...values, area_id: areaId, created_by: userId }), "Projeto salvo. O SEI será usado em todas as suas demandas.");
+    if (ok) setProjectEditor(null);
   }
 
   async function addWorkflowStep() {
@@ -3453,18 +3472,12 @@ function Configuration({
                 Cadastre projetos, vincule demandas e defina os prazos dos novos tickets.
               </p>
             </div>
-          <button className="primary" onClick={() => setShowCatalogForm(true)}><Plus /> Novo projeto + demanda</button></header>
-          {showCatalogForm && <Dialog open={showCatalogForm} onOpenChange={setShowCatalogForm}><DialogContent><DialogHeader><DialogTitle>Novo projeto + demanda</DialogTitle><DialogDescription>O SEI é opcional e será preenchido automaticamente nos novos tickets deste projeto.</DialogDescription></DialogHeader><div className="config-edit-form">
-            <label>
-              Projeto
-              <input
-                value={projectName}
-                onChange={(e) => { setProjectName(e.target.value); setCatalogSei(catalog.find(c => c.projectName === e.target.value)?.sei || ""); }} list="catalog-project-names"
-                placeholder="Ex.: Plataforma de Sustentabilidade"
-              />
-            </label>
-            <datalist id="catalog-project-names">{[...new Set(catalog.map(c => c.projectName))].map(name => <option key={name} value={name} />)}</datalist>
-            <label>Nº do SEI <small>(opcional)</small><input value={catalogSei} maxLength={120} onChange={e => setCatalogSei(e.target.value)} placeholder="Informe o SEI, se já existir" /></label>
+          <button className="primary" onClick={() => setProjectEditor({ name: "", sei_number: "" })}><Plus /> Novo projeto</button></header>
+          {projectEditor && <Dialog open onOpenChange={open => { if (!open) setProjectEditor(null); }}><DialogContent><DialogHeader><DialogTitle>{projectEditor.id ? "Editar projeto" : "Novo projeto"}</DialogTitle><DialogDescription>Cadastre uma vez. Todas as demandas deste projeto usarão este SEI automaticamente.</DialogDescription></DialogHeader><div className="config-edit-form"><label>Nome do projeto<input maxLength={160} value={projectEditor.name} onChange={e => setProjectEditor({ ...projectEditor, name: e.target.value })} placeholder="Ex.: Plataforma de Sustentabilidade" /></label><label>Nº do SEI (opcional)<input maxLength={120} value={projectEditor.sei_number} onChange={e => setProjectEditor({ ...projectEditor, sei_number: e.target.value })} placeholder="Pode ser informado depois" /></label><button className="primary" disabled={busy} onClick={saveCatalogProject}>Salvar projeto</button></div></DialogContent></Dialog>}
+          <div className="catalog-project-register"><div className="catalog-project-row head"><span>Projeto</span><span>Nº do SEI</span><span>Demandas</span><span>Ações</span></div>{catalogProjects.map(p => <div className="catalog-project-row" key={p.id}><b>{p.name}</b><span>{p.sei_number || "Não informado"}</span><span>{catalog.filter(c => c.projectId === p.id).length}</span><div><button className="secondary" disabled={busy} onClick={() => { setSelectedProjectId(p.id); setDemandName(""); setShowCatalogForm(true); }}><Plus /> Adicionar demanda</button><button className="icon-btn" title="Editar projeto e SEI" aria-label={"Editar projeto " + p.name} onClick={() => setProjectEditor({ ...p })}><Pencil /></button></div></div>)}{!catalogProjects.length && <p>Comece cadastrando um projeto. Depois adicione suas demandas.</p>}</div>
+          {showCatalogForm && <Dialog open={showCatalogForm} onOpenChange={setShowCatalogForm}><DialogContent><DialogHeader><DialogTitle>Adicionar demanda</DialogTitle><DialogDescription>Selecione o projeto. O SEI já vem do cadastro e não precisa ser digitado novamente.</DialogDescription></DialogHeader><div className="config-edit-form">
+            <label>Projeto<select value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)}><option value="">Selecione</option>{catalogProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+            <div className="catalog-inherited-sei"><small>SEI do projeto · preenchido automaticamente</small><b>{catalogProjects.find(p => p.id === selectedProjectId)?.sei_number || "Ainda não informado no projeto"}</b></div>
             <label>
               Demanda
               <input
@@ -3499,7 +3512,7 @@ function Configuration({
               Adicionar
             </button>
           </div></DialogContent></Dialog>}
-          <div className="catalog-toolbar"><label><Search /><input aria-label="Buscar projeto, demanda ou SEI" placeholder="Buscar projeto, demanda ou SEI..." value={catalogSearch} onChange={e => setCatalogSearch(e.target.value)} /></label><span>{catalog.length} demandas cadastradas</span></div>
+          <h3 className="catalog-demands-heading">Demandas vinculadas</h3><div className="catalog-toolbar"><label><Search /><input aria-label="Buscar projeto, demanda ou SEI" placeholder="Buscar projeto, demanda ou SEI..." value={catalogSearch} onChange={e => setCatalogSearch(e.target.value)} /></label><span>{catalog.length} demandas cadastradas</span></div>
           <div className="config-table">
             <div className="config-row catalog-row head">
               <span>Projeto</span>
@@ -3888,19 +3901,7 @@ function Configuration({
               </DialogDescription>
             </DialogHeader>
             <div className="config-edit-form">
-              <label>
-                Projeto
-                <input
-                  value={editCatalog.projectName}
-                  onChange={(e) =>
-                    setEditCatalog({
-                      ...editCatalog,
-                      projectName: e.target.value,
-                    })
-                  }
-                />
-              </label>
-              <label>Nº do SEI <small>(opcional · compartilhado pelas demandas deste projeto)</small><input maxLength={120} value={editCatalog.sei || ""} onChange={e => setEditCatalog({ ...editCatalog, sei: e.target.value })} placeholder="Não informado" /></label>
+              <label>Projeto<select value={editCatalog.projectId || ""} onChange={e => { const parent = catalogProjects.find(p => p.id === e.target.value); if (parent) setEditCatalog({ ...editCatalog, projectId: parent.id, projectName: parent.name, sei: parent.sei_number }); }}>{catalogProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><div className="catalog-inherited-sei"><small>SEI do projeto · automático</small><b>{editCatalog.sei || "Ainda não informado no projeto"}</b></div>
               <label>
                 Demanda
                 <input
@@ -3954,8 +3955,7 @@ function Configuration({
                       supabase
                         .from("service_catalog")
                         .update({
-                          project_name: editCatalog.projectName.trim(),
-                          sei_number: (editCatalog.sei || "").trim(),
+                          catalog_project_id: editCatalog.projectId,
                           demand_name: editCatalog.demandName.trim(),
                           sla_days: editCatalog.slaDays,
                           sla_value: editCatalog.slaValue,
