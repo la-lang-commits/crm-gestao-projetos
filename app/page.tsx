@@ -3084,28 +3084,40 @@ function TicketFieldPreview({ fields, busy, change, edit, remove }: {
   remove: (field: FieldDef) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<FieldSection | null>(null);
   const [editing, setEditing] = useState(false);
   const samples: Record<string, string> = { sei: "SEI-123456/2026-01", openedAt: "01/09/2026", status: "Em andamento", stage: "Análise", ownerId: "Responsável da etapa", priority: "Média", labels: "Sustentabilidade" };
   const info = fields.filter(f => fieldSection(f) === "info" && f.key !== "observation");
   const stage = fields.filter(f => fieldSection(f) === "stage" && f.key !== "observation");
   const history = fields.filter(f => fieldSection(f) === "history" && f.key !== "observation");
   function row(f: FieldDef) {
-    return <div className="field-studio-row" key={f.id}>
-      <b>{f.label}</b><small>{fieldTypeLabels[f.type]}</small>
+    return <div className={"field-studio-row" + (draggedId === f.id ? " is-dragging" : "")} key={f.id}>
+      <b className="field-drag-name">{f.key !== "observation" && <span className="field-drag-handle" draggable={!busy} title="Arraste para outro tópico" aria-label={"Arrastar " + f.label} onDragStart={event => { if (busy) { event.preventDefault(); return; } event.dataTransfer.setData("application/x-crm-field", f.id); event.dataTransfer.effectAllowed = "move"; setDraggedId(f.id); }} onDragEnd={() => { setDraggedId(null); setDropTarget(null); }}>⠿</span>}{f.label}</b><small>{fieldTypeLabels[f.type]}</small>
       <button type="button" role="switch" aria-checked={f.visible} aria-label={"Exibir " + f.label} className="field-switch" disabled={busy} onClick={() => change(f, { visible: !f.visible, required: f.visible ? false : f.required })}><span /></button>
       <label><input type="checkbox" checked={f.required} disabled={busy} onChange={() => change(f, { required: !f.required, visible: !f.required ? true : f.visible })} />Obrigatório</label>
       <details className="field-actions"><summary aria-label={"Opções de " + f.label}>•••</summary><div>{f.key !== "observation" && <label className="field-move-label">Mover para outro tópico<select aria-label={"Mover " + f.label + " para"} value={fieldSection(f)} disabled={busy} onChange={event => change(f, { section_key: event.target.value as FieldSection })}>{Object.entries(fieldSections).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>}<button disabled={busy} onClick={() => edit(f)}><Pencil />Editar</button><button disabled={busy} onClick={() => remove(f)}><Trash2 />Excluir</button></div></details>
     </div>;
   }
   function group(title: string, number: string, items: FieldDef[], fixed?: string) {
+    const target = (Object.keys(fieldSections) as FieldSection[]).find(key => fieldSections[key] === title);
     const filtered = items.filter(f => f.label.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR")));
-    return <details className="field-studio-group" open key={title}><summary><span>{number}</span><b>{title}</b><small>{items.length} campos</small></summary>{fixed && !query && <p className="field-fixed-note">{fixed}</p>}{filtered.map(row)}{!filtered.length && <p className="field-fixed-note">Nenhum campo neste grupo.</p>}</details>;
+    return <details className={"field-studio-group" + (dropTarget === target && target ? " is-drop-target" : "")} open key={title}
+      onDragOver={event => { if (!busy && target && draggedId) { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropTarget(target); } }}
+      onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null); }}
+      onDrop={event => {
+        if (!target || busy || !draggedId) return;
+        event.preventDefault();
+        const field = fields.find(item => item.id === draggedId && item.id === event.dataTransfer.getData("application/x-crm-field"));
+        setDraggedId(null); setDropTarget(null);
+        if (field && field.key !== "observation" && fieldSection(field) !== target) change(field, { section_key: target });
+      }}><summary><span>{number}</span><b>{title}</b><small>{items.length} campos</small></summary>{fixed && !query && <p className="field-fixed-note">{fixed}</p>}{filtered.map(row)}{!filtered.length && <p className="field-fixed-note">Nenhum campo neste grupo.</p>}</details>;
   }
   function previewFields(items: FieldDef[]) {
     return items.filter(f => f.visible).map(f => <div key={f.id} className="studio-sample-field"><small>{f.label}{f.required ? " *" : ""}</small><span>{samples[f.key] || (f.type === "date" ? "01/09/2026" : f.type === "number" ? "123" : "Conteúdo de exemplo")}</span>{editing && <button disabled={busy} aria-label={"Editar " + f.label} onClick={() => edit(f)}><Pencil /></button>}</div>);
   }
   return <div className="field-studio">
-    <section className="field-studio-manager"><h3>Campos disponíveis</h3><p>Defina quais campos aparecem e quais são obrigatórios.</p>
+    <section className="field-studio-manager"><h3>Campos disponíveis</h3><p>Arraste pelos pontinhos para mudar de tópico. As alterações são salvas automaticamente.</p>
       <label className="field-studio-search"><Search /><input placeholder="Buscar campo..." aria-label="Buscar campo" value={query} onChange={e => setQuery(e.target.value)} /></label>
       {group("Informações do ticket", "1", info.filter(f => f.visible), "Nome do projeto e demanda são definidos no catálogo e sempre exibidos.")}
       {group("Etapa atual", "2", stage.filter(f => f.visible), "Prazos e responsáveis seguem o fluxo configurado para o projeto.")}
