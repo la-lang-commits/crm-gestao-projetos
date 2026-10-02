@@ -3180,6 +3180,8 @@ function Configuration({
   }, [areaId, catalog]);
   const [showCatalogForm, setShowCatalogForm] = useState(false);
   const [catalogSearch, setCatalogSearch] = useState("");
+  const [catalogActiveFilter, setCatalogActiveFilter] = useState("all");
+  const [collapsedProjects, setCollapsedProjects] = useState<Record<string, boolean>>({});
   const [demandName, setDemandName] = useState("");
   const [sla, setSla] = useState(5);
   const [slaUnit, setSlaUnit] = useState<SlaUnit>("business_days");
@@ -3474,7 +3476,6 @@ function Configuration({
             </div>
           <button className="primary" onClick={() => setProjectEditor({ name: "", sei_number: "" })}><Plus /> Novo projeto</button></header>
           {projectEditor && <Dialog open onOpenChange={open => { if (!open) setProjectEditor(null); }}><DialogContent><DialogHeader><DialogTitle>{projectEditor.id ? "Editar projeto" : "Novo projeto"}</DialogTitle><DialogDescription>Cadastre uma vez. Todas as demandas deste projeto usarão este SEI automaticamente.</DialogDescription></DialogHeader><div className="config-edit-form"><label>Nome do projeto<input maxLength={160} value={projectEditor.name} onChange={e => setProjectEditor({ ...projectEditor, name: e.target.value })} placeholder="Ex.: Plataforma de Sustentabilidade" /></label><label>Nº do SEI (opcional)<input maxLength={120} value={projectEditor.sei_number} onChange={e => setProjectEditor({ ...projectEditor, sei_number: e.target.value })} placeholder="Pode ser informado depois" /></label><button className="primary" disabled={busy} onClick={saveCatalogProject}>Salvar projeto</button></div></DialogContent></Dialog>}
-          <div className="catalog-project-register"><div className="catalog-project-row head"><span>Projeto</span><span>Nº do SEI</span><span>Demandas</span><span>Ações</span></div>{catalogProjects.map(p => <div className="catalog-project-row" key={p.id}><b>{p.name}</b><span>{p.sei_number || "Não informado"}</span><span>{catalog.filter(c => c.projectId === p.id).length}</span><div><button className="secondary" disabled={busy} onClick={() => { setSelectedProjectId(p.id); setDemandName(""); setShowCatalogForm(true); }}><Plus /> Adicionar demanda</button><button className="icon-btn" title="Editar projeto e SEI" aria-label={"Editar projeto " + p.name} onClick={() => setProjectEditor({ ...p })}><Pencil /></button></div></div>)}{!catalogProjects.length && <p>Comece cadastrando um projeto. Depois adicione suas demandas.</p>}</div>
           {showCatalogForm && <Dialog open={showCatalogForm} onOpenChange={setShowCatalogForm}><DialogContent><DialogHeader><DialogTitle>Adicionar demanda</DialogTitle><DialogDescription>Selecione o projeto. O SEI já vem do cadastro e não precisa ser digitado novamente.</DialogDescription></DialogHeader><div className="config-edit-form">
             <label>Projeto<select value={selectedProjectId} onChange={e => setSelectedProjectId(e.target.value)}><option value="">Selecione</option>{catalogProjects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
             <div className="catalog-inherited-sei"><small>SEI do projeto · preenchido automaticamente</small><b>{catalogProjects.find(p => p.id === selectedProjectId)?.sei_number || "Ainda não informado no projeto"}</b></div>
@@ -3512,26 +3513,17 @@ function Configuration({
               Adicionar
             </button>
           </div></DialogContent></Dialog>}
-          <h3 className="catalog-demands-heading">Demandas vinculadas</h3><div className="catalog-toolbar"><label><Search /><input aria-label="Buscar projeto, demanda ou SEI" placeholder="Buscar projeto, demanda ou SEI..." value={catalogSearch} onChange={e => setCatalogSearch(e.target.value)} /></label><span>{catalog.length} demandas cadastradas</span></div>
-          <div className="config-table">
-            <div className="config-row catalog-row head">
-              <span>Projeto</span>
-              <span>Nº do SEI</span>
-              <span>Demanda</span>
-              <span>SLA</span>
-              <span>Ativo</span>
-              <span>Ações</span>
-            </div>
-            {catalog.filter(c => [c.projectName, c.demandName, c.sei || ""].join(" ").toLocaleLowerCase("pt-BR").includes(catalogSearch.toLocaleLowerCase("pt-BR"))).map((c) => (
-              <div className="config-row catalog-row" key={c.id}>
-                <b>{c.projectName}</b>
-                <span className={c.sei ? "catalog-sei" : "catalog-no-sei"}>{c.sei || "Não informado"}</span>
-                <span>{c.demandName}</span>
-                <span>{formatSla(c.slaValue, c.slaUnit)}</span>
-                <span className={"yesno " + (c.active ? "yes" : "no")}>
-                  {c.active ? "SIM" : "NÃO"}
-                </span>
-                <div className="row-actions">
+          <div className="catalog-toolbar grouped-toolbar"><label><Search /><input aria-label="Buscar projeto, demanda ou SEI" placeholder="Buscar projeto, demanda ou SEI..." value={catalogSearch} onChange={e => setCatalogSearch(e.target.value)} /></label><label className="catalog-filter">Exibição da demanda<select value={catalogActiveFilter} onChange={e => setCatalogActiveFilter(e.target.value)}><option value="all">Todas</option><option value="active">Ativas</option><option value="hidden">Ocultas</option></select></label><button className="catalog-clear" onClick={() => { setCatalogSearch(""); setCatalogActiveFilter("all"); }}>Limpar filtros</button></div>
+          <div className="catalog-project-groups">
+          {catalogProjects.map((p, projectIndex) => {
+            const allDemands = catalog.filter(c => c.projectId === p.id);
+            const query = catalogSearch.trim().toLocaleLowerCase("pt-BR");
+            const projectMatches = (p.name + " " + p.sei_number).toLocaleLowerCase("pt-BR").includes(query);
+            const demands = allDemands.filter(c => (projectMatches || c.demandName.toLocaleLowerCase("pt-BR").includes(query)) && (catalogActiveFilter === "all" || (catalogActiveFilter === "active" ? c.active : !c.active)));
+            if ((!projectMatches && !demands.length) || (catalogActiveFilter !== "all" && !demands.length)) return null;
+            return <section className="catalog-project-group" key={p.id}>
+              <header className="catalog-group-header"><div className="catalog-group-title"><span className={"catalog-project-dot dot-" + projectIndex % 4} /><div><h3>{p.name}<button title="Editar projeto e SEI" aria-label={"Editar projeto " + p.name} onClick={() => setProjectEditor({ ...p })}><Pencil /></button></h3><div className="catalog-group-meta"><FileText /><span>SEI: {p.sei_number || "Não informado"}</span>{!p.sei_number && <button onClick={() => setProjectEditor({ ...p })}>+ Adicionar SEI</button>}<span className="catalog-meta-count">{allDemands.length} {allDemands.length === 1 ? "demanda" : "demandas"}</span></div></div></div><div className="catalog-group-controls"><button className="catalog-collapse" aria-expanded={!collapsedProjects[p.id]} aria-controls={"demands-" + p.id} aria-label={(collapsedProjects[p.id] ? "Expandir " : "Recolher ") + p.name} onClick={() => setCollapsedProjects(v => ({ ...v, [p.id]: !v[p.id] }))}>{collapsedProjects[p.id] ? "⌄" : "⌃"}</button><button className="catalog-add-demand" disabled={busy} onClick={() => { setSelectedProjectId(p.id); setDemandName(""); setShowCatalogForm(true); }}><Plus /> Adicionar demanda</button></div></header>
+              <div id={"demands-" + p.id} hidden={!!collapsedProjects[p.id]} className="catalog-demands-scroll"><table className="catalog-demands-table"><thead><tr><th>#</th><th>Demanda</th><th>SLA</th><th>Unidade</th><th>Exibição</th><th>Responsável inicial</th><th>Ações</th></tr></thead><tbody>{demands.map((c,index) => <tr key={c.id}><td>{index+1}</td><td><b>{c.demandName}</b></td><td>{c.slaValue}</td><td>{formatSla(c.slaValue,c.slaUnit).replace(/^\d+\s*/, "")}</td><td><span className={"catalog-demand-badge " + (c.active ? "active" : "hidden")}>{c.active ? "Ativa" : "Oculta"}</span></td><td>{c.workflow[0]?.assignee || "Não definido"}</td><td><div className="row-actions">
                   <button
                     title="Configurar fluxo e responsáveis"
                     onClick={() => setWorkflowCatalogId(c.id)}
@@ -3571,14 +3563,11 @@ function Configuration({
                   >
                     <Trash2 />
                   </button>
-                </div>
-              </div>
-            ))}
-            {!catalog.length && (
-              <div className="config-empty">
-                Nenhuma opção cadastrada nesta área.
-              </div>
-            )}
+                </div></td></tr>)}</tbody></table>{!demands.length && <p className="catalog-group-empty">{allDemands.length ? "Nenhuma demanda corresponde aos filtros." : "Nenhuma demanda cadastrada. Use Adicionar demanda para começar."}</p>}</div>
+            </section>;
+          })}
+          {!catalogProjects.length && <p className="config-empty">Cadastre seu primeiro projeto para adicionar demandas.</p>}
+          {catalogProjects.length > 0 && !catalogProjects.some(p => { const q=catalogSearch.trim().toLocaleLowerCase("pt-BR"); const match=(p.name+" "+p.sei_number).toLocaleLowerCase("pt-BR").includes(q); return (match && catalogActiveFilter === "all") || catalog.some(c => c.projectId === p.id && (match || c.demandName.toLocaleLowerCase("pt-BR").includes(q)) && (catalogActiveFilter === "all" || (catalogActiveFilter === "active" ? c.active : !c.active))); }) && <p className="config-empty">Nenhum resultado para os filtros selecionados.</p>}
           </div>
         </div>
       )}
