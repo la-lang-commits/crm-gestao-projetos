@@ -3064,42 +3064,45 @@ function TicketFieldPreview({ fields, busy, change, edit, remove }: {
   edit: (field: FieldDef) => void;
   remove: (field: FieldDef) => void;
 }) {
-  const [showHidden, setShowHidden] = useState(true);
-  const samples: Record<string, string> = { sei: "00000.000000/2026-00", openedAt: "23/09/2026", status: "Em andamento", stage: "Análise", ownerId: "Responsável da etapa", priority: "Média", observation: "As observações do projeto aparecem aqui.", labels: "Etiqueta do projeto" };
-  function card(f: FieldDef) {
-    if (!f.visible && !showHidden) return null;
-    return <article key={f.id} className={`preview-field ${f.visible ? "" : "is-hidden"}`}>
-      <header><b>{f.label}{f.required && <span aria-label="Obrigatório"> *</span>}</b><small>{!f.visible ? "Oculto no ticket" : fieldTypeLabels[f.type]}</small></header>
-      <div className={`preview-field-value ${f.type === "textarea" ? "multiline" : ""}`}>{samples[f.key] || (f.type === "date" ? "23/09/2026" : f.type === "number" ? "123" : "Conteúdo deste campo")}</div>
-      <div className="preview-field-controls">
-        <label><input type="checkbox" checked={f.visible} disabled={busy} onChange={() => change(f, { visible: !f.visible, required: f.visible ? false : f.required })} />Exibir</label>
-        <label><input type="checkbox" checked={f.required} disabled={busy} onChange={() => change(f, { required: !f.required, visible: !f.required ? true : f.visible })} />Obrigatório</label>
-        <button disabled={busy} title={`Editar ${f.label}`} aria-label={`Editar ${f.label}`} onClick={() => edit(f)}><Pencil /></button>
-        <button disabled={busy} title={`Excluir ${f.label}`} aria-label={`Excluir ${f.label}`} onClick={() => remove(f)}><Trash2 /></button>
-      </div>
-    </article>;
+  const [query, setQuery] = useState("");
+  const [editing, setEditing] = useState(false);
+  const samples: Record<string, string> = { sei: "SEI-123456/2026-01", openedAt: "01/09/2026", status: "Em andamento", stage: "Análise", ownerId: "Responsável da etapa", priority: "Média", labels: "Sustentabilidade" };
+  const info = fields.filter(f => !["stage", "ownerId", "observation"].includes(f.key));
+  const stage = fields.filter(f => ["stage", "ownerId"].includes(f.key));
+  function row(f: FieldDef) {
+    return <div className="field-studio-row" key={f.id}>
+      <b>{f.label}</b><small>{fieldTypeLabels[f.type]}</small>
+      <button type="button" role="switch" aria-checked={f.visible} aria-label={"Exibir " + f.label} className="field-switch" disabled={busy} onClick={() => change(f, { visible: !f.visible, required: f.visible ? false : f.required })}><span /></button>
+      <label><input type="checkbox" checked={f.required} disabled={busy} onChange={() => change(f, { required: !f.required, visible: !f.required ? true : f.visible })} />Obrigatório</label>
+      <details className="field-actions"><summary aria-label={"Opções de " + f.label}>•••</summary><div><button disabled={busy} onClick={() => edit(f)}><Pencil />Editar</button><button disabled={busy} onClick={() => remove(f)}><Trash2 />Excluir</button></div></details>
+    </div>;
   }
-  const byKey = (key: string) => fields.filter(f => f.system && f.key === key).map(card);
-  return <div className="ticket-field-preview">
-    <div className="preview-toolbar"><div><b>Prévia do ticket · dados de exemplo</b><p>As opções são salvas automaticamente para esta área. Obrigatório vale para o preenchimento do ticket.</p></div><label><input type="checkbox" checked={showHidden} onChange={e => setShowHidden(e.target.checked)} />Mostrar campos ocultos</label></div>
-    <div className="preview-ticket-header"><strong>TK-EXEMPLO</strong>{byKey("labels")}</div>
-    <div className="preview-ticket-columns">
-      <section><h3><span>1</span> Informações do ticket</h3><p>Dados preenchidos na abertura</p>
-        <div className="preview-fixed"><small>Nome do projeto</small><b>Nome do projeto selecionado</b><small>Demanda</small><b>Demanda selecionada</b><em>Definidos no catálogo</em></div>
-        {byKey("status")}{byKey("sei")}{byKey("openedAt")}{byKey("priority")}
-        <div className="preview-fixed">Encaminhar para próxima etapa</div>
-        {fields.filter(f => !f.system).map(card)}
-        {byKey("observation")}
-        <small>Novos campos aparecem nesta coluna, abaixo dos dados padrão.</small>
-      </section>
-      <section><h3><span>2</span> Etapa atual</h3><p>Andamento e prazos do processo</p>{byKey("stage")}{byKey("ownerId")}
-        <div className="preview-fixed"><b>SLAs e responsáveis</b><span>Etapas e prazos definidos em Projetos, demandas e SLA.</span></div>
-        <div className="preview-fixed"><b>Anexos</b><span>Arquivos do ticket</span></div>
-      </section>
-      <section><h3><span>3</span> Histórico</h3><p>Comentários e movimentações</p><div className="preview-fixed"><b>Histórico do ticket</b><span>As alterações e os comentários aparecem aqui automaticamente.</span></div></section>
-    </div>
+  function group(title: string, number: string, items: FieldDef[], fixed?: string) {
+    const filtered = items.filter(f => f.label.toLocaleLowerCase("pt-BR").includes(query.toLocaleLowerCase("pt-BR")));
+    return <details className="field-studio-group" open key={title}><summary><span>{number}</span><b>{title}</b><small>{items.length} campos</small></summary>{fixed && !query && <p className="field-fixed-note">{fixed}</p>}{filtered.map(row)}{!filtered.length && <p className="field-fixed-note">Nenhum campo neste grupo.</p>}</details>;
+  }
+  function previewFields(items: FieldDef[]) {
+    return items.filter(f => f.visible).map(f => <div key={f.id} className="studio-sample-field"><small>{f.label}{f.required ? " *" : ""}</small><span>{samples[f.key] || (f.type === "date" ? "01/09/2026" : f.type === "number" ? "123" : "Conteúdo de exemplo")}</span>{editing && <button disabled={busy} aria-label={"Editar " + f.label} onClick={() => edit(f)}><Pencil /></button>}</div>);
+  }
+  return <div className="field-studio">
+    <section className="field-studio-manager"><h3>Campos disponíveis</h3><p>Defina quais campos aparecem e quais são obrigatórios.</p>
+      <label className="field-studio-search"><Search /><input placeholder="Buscar campo..." aria-label="Buscar campo" value={query} onChange={e => setQuery(e.target.value)} /></label>
+      {group("Informações do ticket", "1", info.filter(f => f.visible), "Nome do projeto e demanda são definidos no catálogo e sempre exibidos.")}
+      {group("Etapa atual", "2", stage.filter(f => f.visible), "Prazos e responsáveis seguem o fluxo configurado para o projeto.")}
+      <details className="field-studio-group" open><summary><span>3</span><b>Histórico e anexos</b></summary><p className="field-fixed-note">Comentários, movimentações e arquivos ficam sempre disponíveis no ticket.</p></details>
+      {group("Campos ocultos", "—", fields.filter(f => !f.visible && f.key !== "observation"))}
+      {fields.some(f => f.key === "observation") && group("Formulário de abertura", "+", fields.filter(f => f.key === "observation"), "Observação é usada somente na abertura. No ticket, utilize os comentários.")}
+    </section>
+    <section className="field-studio-preview"><header><div><h3>Prévia do ticket · dados de exemplo</h3><p>As alterações são salvas automaticamente nesta área.</p></div><div className="studio-mode"><button aria-pressed={!editing} onClick={() => setEditing(false)}>Visualização</button><button aria-pressed={editing} onClick={() => setEditing(true)}>Edição</button></div></header>
+      <div className="studio-ticket"><div className="studio-ticket-top"><b># TK-0001</b>{fields.some(f => f.key === "status" && f.visible) && <span>Em andamento</span>}{fields.some(f => f.key === "labels" && f.visible) && <em>Sustentabilidade</em>}</div>
+        <section><h4><span>1</span>Informações do ticket</h4><div className="studio-sample-grid"><div className="studio-sample-field"><small>Nome do projeto</small><span>Desenvolvimento do Hub de Boas Práticas</span></div><div className="studio-sample-field"><small>Demanda</small><span>Plataforma</span></div>{previewFields(info.filter(f => f.key !== "labels"))}</div></section>
+        <section><h4><span>2</span>Etapa atual</h4><div className="studio-sample-grid">{previewFields(stage)}<div className="studio-sample-field"><small>SLA do projeto</small><span>30 dias corridos</span></div></div><div className="studio-attachment"><FileText /><div>Documento exemplo.pdf<small>Arquivo de exemplo</small></div></div></section>
+        <section><h4><span>3</span>Histórico</h4><ol className="studio-history"><li><b>Status alterado para Em andamento</b><small>02/09/2026 às 10:15</small></li><li><b>Etapa atual: Análise</b><small>02/09/2026 às 10:15</small></li><li><b>Arquivo anexado: Documento exemplo.pdf</b><small>02/09/2026 às 10:15</small></li><li><b>Ticket criado</b><small>01/09/2026 às 14:20</small></li></ol></section>
+      </div>
+    </section>
   </div>;
 }
+
 function Configuration({
   role,
   userId,
