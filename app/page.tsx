@@ -107,6 +107,7 @@ type Event = {
   toStatus?: string;
 };
 type CatalogItem = {
+  sei?: string;
   id: string;
   areaId: string;
   projectName: string;
@@ -497,7 +498,7 @@ function Workspace({ user }: { user: any }) {
       supabase
         .from("service_catalog")
         .select(
-          "id,area_id,project_name,demand_name,sla_days,sla_value,sla_unit,active,workflow:service_catalog_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,assignee:profiles!service_catalog_workflow_steps_assignee_id_fkey(full_name))",
+          "id,area_id,project_name,demand_name,sei_number,sla_days,sla_value,sla_unit,active,workflow:service_catalog_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,assignee:profiles!service_catalog_workflow_steps_assignee_id_fkey(full_name))",
         )
         .order("project_name"),
       supabase
@@ -558,6 +559,7 @@ function Workspace({ user }: { user: any }) {
         id: c.id,
         areaId: c.area_id,
         projectName: c.project_name,
+        sei: c.sei_number || "",
         demandName: c.demand_name,
         slaDays: c.sla_days,
         slaValue: c.sla_value,
@@ -2256,7 +2258,7 @@ function NewProject({
     first = active[0];
   const fresh = (): NewValues => ({
     catalogId: first?.id || "",
-    sei: "",
+    sei: first?.sei || "",
     openedAt: new Date().toISOString().slice(0, 10),
     stage: "Triagem",
     status: "Aberto",
@@ -2370,7 +2372,7 @@ function NewProject({
                 const n = e.target.value,
                   item = active.find((c) => c.projectName === n);
                 setProjectName(n);
-                set("catalogId", item?.id || "");
+                setValues(v => ({ ...v, catalogId: item?.id || "", sei: item?.sei || "" }));
               }}
             >
               <option value="">Selecione</option>
@@ -2383,7 +2385,7 @@ function NewProject({
             Demanda *
             <select
               value={values.catalogId}
-              onChange={(e) => set("catalogId", e.target.value)}
+              onChange={(e) => { const item = active.find(c => c.id === e.target.value); setValues(v => ({ ...v, catalogId: e.target.value, sei: item?.sei || "" })); }}
             >
               <option value="">Selecione</option>
               {demands.map((x) => (
@@ -3162,6 +3164,9 @@ function Configuration({
 }) {
   const [tab, setTab] = useState<"catalog" | "fields" | "areas">("catalog");
   const [projectName, setProjectName] = useState("");
+  const [catalogSei, setCatalogSei] = useState("");
+  const [showCatalogForm, setShowCatalogForm] = useState(false);
+  const [catalogSearch, setCatalogSearch] = useState("");
   const [demandName, setDemandName] = useState("");
   const [sla, setSla] = useState(5);
   const [slaUnit, setSlaUnit] = useState<SlaUnit>("business_days");
@@ -3227,6 +3232,7 @@ function Configuration({
         supabase.from("service_catalog").insert({
           area_id: areaId,
           project_name: projectName.trim(),
+          sei_number: catalogSei.trim(),
           demand_name: demandName.trim(),
           sla_days: sla,
           sla_value: sla,
@@ -3238,6 +3244,8 @@ function Configuration({
     if (ok) {
       setProjectName("");
       setDemandName("");
+      setCatalogSei("");
+      setShowCatalogForm(false);
     }
   }
 
@@ -3437,24 +3445,26 @@ function Configuration({
       </div>
 
       {tab === "catalog" && (
-        <div className="settings-card">
+        <div className="settings-card catalog-settings">
           <header>
             <div>
               <h2>Projetos, demandas e SLA</h2>
               <p>
-                Cada linha representa uma combinação disponível para os tickets.
+                Cadastre projetos, vincule demandas e defina os prazos dos novos tickets.
               </p>
             </div>
-          </header>
-          <div className="catalog-form">
+          <button className="primary" onClick={() => setShowCatalogForm(true)}><Plus /> Novo projeto + demanda</button></header>
+          {showCatalogForm && <Dialog open={showCatalogForm} onOpenChange={setShowCatalogForm}><DialogContent><DialogHeader><DialogTitle>Novo projeto + demanda</DialogTitle><DialogDescription>O SEI é opcional e será preenchido automaticamente nos novos tickets deste projeto.</DialogDescription></DialogHeader><div className="config-edit-form">
             <label>
               Projeto
               <input
                 value={projectName}
-                onChange={(e) => setProjectName(e.target.value)}
+                onChange={(e) => { setProjectName(e.target.value); setCatalogSei(catalog.find(c => c.projectName === e.target.value)?.sei || ""); }} list="catalog-project-names"
                 placeholder="Ex.: Plataforma de Sustentabilidade"
               />
             </label>
+            <datalist id="catalog-project-names">{[...new Set(catalog.map(c => c.projectName))].map(name => <option key={name} value={name} />)}</datalist>
+            <label>Nº do SEI <small>(opcional)</small><input value={catalogSei} maxLength={120} onChange={e => setCatalogSei(e.target.value)} placeholder="Informe o SEI, se já existir" /></label>
             <label>
               Demanda
               <input
@@ -3488,18 +3498,21 @@ function Configuration({
               <Plus />
               Adicionar
             </button>
-          </div>
+          </div></DialogContent></Dialog>}
+          <div className="catalog-toolbar"><label><Search /><input aria-label="Buscar projeto, demanda ou SEI" placeholder="Buscar projeto, demanda ou SEI..." value={catalogSearch} onChange={e => setCatalogSearch(e.target.value)} /></label><span>{catalog.length} demandas cadastradas</span></div>
           <div className="config-table">
             <div className="config-row catalog-row head">
               <span>Projeto</span>
+              <span>Nº do SEI</span>
               <span>Demanda</span>
               <span>SLA</span>
               <span>Ativo</span>
               <span>Ações</span>
             </div>
-            {catalog.map((c) => (
+            {catalog.filter(c => [c.projectName, c.demandName, c.sei || ""].join(" ").toLocaleLowerCase("pt-BR").includes(catalogSearch.toLocaleLowerCase("pt-BR"))).map((c) => (
               <div className="config-row catalog-row" key={c.id}>
                 <b>{c.projectName}</b>
+                <span className={c.sei ? "catalog-sei" : "catalog-no-sei"}>{c.sei || "Não informado"}</span>
                 <span>{c.demandName}</span>
                 <span>{formatSla(c.slaValue, c.slaUnit)}</span>
                 <span className={"yesno " + (c.active ? "yes" : "no")}>
@@ -3887,6 +3900,7 @@ function Configuration({
                   }
                 />
               </label>
+              <label>Nº do SEI <small>(opcional · compartilhado pelas demandas deste projeto)</small><input maxLength={120} value={editCatalog.sei || ""} onChange={e => setEditCatalog({ ...editCatalog, sei: e.target.value })} placeholder="Não informado" /></label>
               <label>
                 Demanda
                 <input
@@ -3941,6 +3955,7 @@ function Configuration({
                         .from("service_catalog")
                         .update({
                           project_name: editCatalog.projectName.trim(),
+                          sei_number: (editCatalog.sei || "").trim(),
                           demand_name: editCatalog.demandName.trim(),
                           sla_days: editCatalog.slaDays,
                           sla_value: editCatalog.slaValue,
