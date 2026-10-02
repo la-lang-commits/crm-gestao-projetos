@@ -133,7 +133,13 @@ type ProjectWorkflowStep = WorkflowTemplateStep & {
   completedAt: string | null;
   completedLate: boolean;
 };
+type FieldSection = "info" | "stage" | "history";
+const fieldSections: Record<FieldSection, string> = { info: "Informações do ticket", stage: "Etapa atual", history: "Histórico e anexos" };
+function fieldSection(field: { key: string; section?: FieldSection | null }): FieldSection {
+  return field.section || (["stage", "ownerId"].includes(field.key) ? "stage" : "info");
+}
 type FieldDef = {
+  section?: FieldSection | null;
   id: string;
   areaId: string;
   key: string;
@@ -497,7 +503,7 @@ function Workspace({ user }: { user: any }) {
       supabase
         .from("ticket_field_definitions")
         .select(
-          "id,area_id,field_key,label,field_type,required,visible,is_system,sort_order",
+          "id,area_id,field_key,label,field_type,required,visible,is_system,sort_order,section_key",
         )
         .order("sort_order"),
       supabase.from("profiles").select("id,email,full_name,phone,auth_user_id").order("full_name"),
@@ -584,6 +590,7 @@ function Workspace({ user }: { user: any }) {
         visible: f.visible,
         system: f.is_system,
         order: f.sort_order,
+        section: f.section_key,
       })),
     );
     if (jr.error)
@@ -1854,79 +1861,10 @@ function ProjectDetail({
     }
   }
 
-  return (
-    <>
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="process-dialog">
-        <DialogHeader className="process-header">
-          <DialogTitle className="sr-only">Processo {ticket(project.ticket)}</DialogTitle>
-          <DialogDescription className="sr-only">Detalhes, prazos e histórico do processo.</DialogDescription>
-          <div className="process-header-start">
-            <ExportTicketsButton projects={[project]} fields={fields} />
-            <div className="process-kicker">
-              <span>{ticket(project.ticket)}</span>
-            </div>
-            {show("labels") && (
-              <div className="header-label-control">
-                <button
-                  className="header-label-trigger"
-                  onClick={() => setLabelProject(labelProject === project.id ? "" : project.id)}
-                  aria-expanded={labelProject === project.id}
-                >
-                  <Tag /> {label("labels", "Etiquetas")}
-                </button>
-                {labelProject === project.id && (
-                  <div className="header-label-popover">
-                    <b>Etiquetas do ticket</b>
-                    <div className="label-chips">
-                      {project.labels.map((label) => (
-                        <span key={label.id}>
-                          <Tag />
-                          {label.label_text}
-                          <button
-                            title={`Remover etiqueta ${label.label_text}`}
-                            aria-label={`Remover etiqueta ${label.label_text}`}
-                            onClick={() => removeLabel(label.id)}
-                          ><X /></button>
-                        </span>
-                      ))}
-                      {!project.labels.length && <small>Nenhuma etiqueta adicionada.</small>}
-                    </div>
-                    <div className="label-add">
-                      <input
-                        autoFocus
-                        maxLength={120}
-                        value={labelText}
-                        onChange={(event) => setLabelText(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") addLabel(project.id);
-                        }}
-                        placeholder="Nome da etiqueta"
-                      />
-                      <button onClick={() => addLabel(project.id)}>Adicionar</button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </DialogHeader>
-
-        <div className="process-layout process-three-columns">
-          <section className="process-column process-ticket-column">
-            <header className="process-column-title">
-              <div><span>1</span><div><b>Informações do ticket</b><small>Dados preenchidos na abertura</small></div></div>
-            </header>
-            <div className="ticket-primary-fields">
-              <article>
-                <b>Nome do projeto</b>
-                <span>{project.name}</span>
-              </article>
-              <article>
-                <b>Demanda</b>
-                <span>{project.demand}</span>
-              </article>
-              {show("status") && <article className="editable-ticket-field">
+  function renderSection(section: FieldSection) {
+    const show = (key: string) => fields.some(f => f.key === key && f.visible && fieldSection(f) === section);
+    return <div className="ticket-configured-fields">
+      {show("status") && <article className="editable-ticket-field">
                 <b>{label("status", "Status")}</b>
                 <button onClick={() => {
                   setQuickStatus(project.status);
@@ -1970,8 +1908,7 @@ function ProjectDetail({
                 )}
                 {quickEdit === "sei" && quickError && <small className="quick-edit-error" role="alert">{quickError}</small>}
               </article>}
-            </div>
-            {quickEdit === "status" && (
+      {show("status") && <>{quickEdit === "status" && (
               <div className="quick-ticket-editor">
                 <header>
                   <b>Editar status</b>
@@ -1990,12 +1927,94 @@ function ProjectDetail({
                   {quickBusy ? <Loader2 /> : null} Salvar alteração
                 </button>
               </div>
-            )}
-            <div className="ticket-secondary-fields">
-              {show("openedAt") && (
+            )}</>}
+      {show("openedAt") && (
                 <div><b>{label("openedAt", "Data de abertura")}</b><span>{new Date(project.openedAt + "T12:00:00").toLocaleDateString("pt-BR")}</span></div>
               )}
               {show("priority") && <div><b>{label("priority", "Prioridade")}</b><span>{project.priority}</span></div>}
+      {show("labels") && (
+              <div className="header-label-control">
+                <button
+                  className="header-label-trigger"
+                  onClick={() => setLabelProject(labelProject === project.id ? "" : project.id)}
+                  aria-expanded={labelProject === project.id}
+                >
+                  <Tag /> {label("labels", "Etiquetas")}
+                </button>
+                {labelProject === project.id && (
+                  <div className="header-label-popover">
+                    <b>Etiquetas do ticket</b>
+                    <div className="label-chips">
+                      {project.labels.map((label) => (
+                        <span key={label.id}>
+                          <Tag />
+                          {label.label_text}
+                          <button
+                            title={`Remover etiqueta ${label.label_text}`}
+                            aria-label={`Remover etiqueta ${label.label_text}`}
+                            onClick={() => removeLabel(label.id)}
+                          ><X /></button>
+                        </span>
+                      ))}
+                      {!project.labels.length && <small>Nenhuma etiqueta adicionada.</small>}
+                    </div>
+                    <div className="label-add">
+                      <input
+                        autoFocus
+                        maxLength={120}
+                        value={labelText}
+                        onChange={(event) => setLabelText(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") addLabel(project.id);
+                        }}
+                        placeholder="Nome da etiqueta"
+                      />
+                      <button onClick={() => addLabel(project.id)}>Adicionar</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+      {fields.filter(f => f.visible && fieldSection(f) === section && ["stage", "ownerId"].includes(f.key)).map(f => <article key={f.id}><b>{f.label}</b><span>{f.key === "stage" ? (currentStep?.stageName || project.stage || "—") : project.owner || "Não informado"}</span></article>)}
+      {custom.filter(item => fieldSection(item.field) === section).map(item => <article key={item.field.id}><b>{item.field.label}</b><span>{item.value || "—"}</span></article>)}
+    </div>;
+  }
+
+  return (
+    <>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="process-dialog">
+        <DialogHeader className="process-header">
+          <DialogTitle className="sr-only">Processo {ticket(project.ticket)}</DialogTitle>
+          <DialogDescription className="sr-only">Detalhes, prazos e histórico do processo.</DialogDescription>
+          <div className="process-header-start">
+            <ExportTicketsButton projects={[project]} fields={fields} />
+            <div className="process-kicker">
+              <span>{ticket(project.ticket)}</span>
+            </div>
+
+          </div>
+        </DialogHeader>
+
+        <div className="process-layout process-three-columns">
+          <section className="process-column process-ticket-column">
+            <header className="process-column-title">
+              <div><span>1</span><div><b>Informações do ticket</b><small>Dados preenchidos na abertura</small></div></div>
+            </header>
+            <div className="ticket-primary-fields">
+              <article>
+                <b>Nome do projeto</b>
+                <span>{project.name}</span>
+              </article>
+              <article>
+                <b>Demanda</b>
+                <span>{project.demand}</span>
+              </article>
+              {renderSection("info")}
+            </div>
+
+            <div className="ticket-secondary-fields">
+
               {project.workflow.some((step) => step.status === "current") && (
                 <button className="primary wide ticket-advance" onClick={() => edit(project)}>
                   <CheckCircle2 />
@@ -2004,9 +2023,7 @@ function ProjectDetail({
                     : "Concluir projeto"}
                 </button>
               )}
-              {custom.map((item) => (
-                <div key={item.field!.id}><b>{item.field!.label}</b><span>{item.value || "—"}</span></div>
-              ))}
+
 
             </div>
           </section>
@@ -2016,6 +2033,7 @@ function ProjectDetail({
               <header>
                 <div><span className="division-number">2</span><div><b>Etapa atual</b><small>Andamento e prazos do processo</small></div></div>
               </header>
+              {renderSection("stage")}
               {(show("ownerId") || show("stage")) && <WorkflowOwners project={project} showStages={show("stage")} showOwners={show("ownerId")} />}
             </section>
 
@@ -2096,6 +2114,7 @@ function ProjectDetail({
               <div><span className="division-number">3</span><MessageCircle /><b>Comentários e histórico</b></div>
               <small>{project.events.length} registros</small>
             </header>
+            {renderSection("history")}
             {currentStepLate && (
               <div className="late-comment-warning"><Clock3 />Esta etapa está atrasada. Registre a justificativa abaixo.</div>
             )}
@@ -3060,21 +3079,22 @@ const fieldTypeLabels: Record<FieldDef["type"], string> = {
 function TicketFieldPreview({ fields, busy, change, edit, remove }: {
   fields: FieldDef[];
   busy: boolean;
-  change: (field: FieldDef, patch: { visible?: boolean; required?: boolean }) => void;
+  change: (field: FieldDef, patch: { visible?: boolean; required?: boolean; section_key?: FieldSection }) => void;
   edit: (field: FieldDef) => void;
   remove: (field: FieldDef) => void;
 }) {
   const [query, setQuery] = useState("");
   const [editing, setEditing] = useState(false);
   const samples: Record<string, string> = { sei: "SEI-123456/2026-01", openedAt: "01/09/2026", status: "Em andamento", stage: "Análise", ownerId: "Responsável da etapa", priority: "Média", labels: "Sustentabilidade" };
-  const info = fields.filter(f => !["stage", "ownerId", "observation"].includes(f.key));
-  const stage = fields.filter(f => ["stage", "ownerId"].includes(f.key));
+  const info = fields.filter(f => fieldSection(f) === "info" && f.key !== "observation");
+  const stage = fields.filter(f => fieldSection(f) === "stage" && f.key !== "observation");
+  const history = fields.filter(f => fieldSection(f) === "history" && f.key !== "observation");
   function row(f: FieldDef) {
     return <div className="field-studio-row" key={f.id}>
       <b>{f.label}</b><small>{fieldTypeLabels[f.type]}</small>
       <button type="button" role="switch" aria-checked={f.visible} aria-label={"Exibir " + f.label} className="field-switch" disabled={busy} onClick={() => change(f, { visible: !f.visible, required: f.visible ? false : f.required })}><span /></button>
       <label><input type="checkbox" checked={f.required} disabled={busy} onChange={() => change(f, { required: !f.required, visible: !f.required ? true : f.visible })} />Obrigatório</label>
-      <details className="field-actions"><summary aria-label={"Opções de " + f.label}>•••</summary><div><button disabled={busy} onClick={() => edit(f)}><Pencil />Editar</button><button disabled={busy} onClick={() => remove(f)}><Trash2 />Excluir</button></div></details>
+      <details className="field-actions"><summary aria-label={"Opções de " + f.label}>•••</summary><div>{f.key !== "observation" && <label className="field-move-label">Mover para outro tópico<select aria-label={"Mover " + f.label + " para"} value={fieldSection(f)} disabled={busy} onChange={event => change(f, { section_key: event.target.value as FieldSection })}>{Object.entries(fieldSections).map(([value, name]) => <option key={value} value={value}>{name}</option>)}</select></label>}<button disabled={busy} onClick={() => edit(f)}><Pencil />Editar</button><button disabled={busy} onClick={() => remove(f)}><Trash2 />Excluir</button></div></details>
     </div>;
   }
   function group(title: string, number: string, items: FieldDef[], fixed?: string) {
@@ -3089,15 +3109,15 @@ function TicketFieldPreview({ fields, busy, change, edit, remove }: {
       <label className="field-studio-search"><Search /><input placeholder="Buscar campo..." aria-label="Buscar campo" value={query} onChange={e => setQuery(e.target.value)} /></label>
       {group("Informações do ticket", "1", info.filter(f => f.visible), "Nome do projeto e demanda são definidos no catálogo e sempre exibidos.")}
       {group("Etapa atual", "2", stage.filter(f => f.visible), "Prazos e responsáveis seguem o fluxo configurado para o projeto.")}
-      <details className="field-studio-group" open><summary><span>3</span><b>Histórico e anexos</b></summary><p className="field-fixed-note">Comentários, movimentações e arquivos ficam sempre disponíveis no ticket.</p></details>
+      {group("Histórico e anexos", "3", history.filter(f => f.visible), "Comentários, movimentações e arquivos ficam sempre disponíveis no ticket.")}
       {group("Campos ocultos", "—", fields.filter(f => !f.visible && f.key !== "observation"))}
       {fields.some(f => f.key === "observation") && group("Formulário de abertura", "+", fields.filter(f => f.key === "observation"), "Observação é usada somente na abertura. No ticket, utilize os comentários.")}
     </section>
     <section className="field-studio-preview"><header><div><h3>Prévia do ticket · dados de exemplo</h3><p>As alterações são salvas automaticamente nesta área.</p></div><div className="studio-mode"><button aria-pressed={!editing} onClick={() => setEditing(false)}>Visualização</button><button aria-pressed={editing} onClick={() => setEditing(true)}>Edição</button></div></header>
-      <div className="studio-ticket"><div className="studio-ticket-top"><b># TK-0001</b>{fields.some(f => f.key === "status" && f.visible) && <span>Em andamento</span>}{fields.some(f => f.key === "labels" && f.visible) && <em>Sustentabilidade</em>}</div>
+      <div className="studio-ticket"><div className="studio-ticket-top"><b># TK-0001</b>{fields.some(f => f.key === "status" && f.visible) && <span>Em andamento</span>}{fields.some(f => f.key === "labels" && f.visible && fieldSection(f) === "info") && <em>Sustentabilidade</em>}</div>
         <section><h4><span>1</span>Informações do ticket</h4><div className="studio-sample-grid"><div className="studio-sample-field"><small>Nome do projeto</small><span>Desenvolvimento do Hub de Boas Práticas</span></div><div className="studio-sample-field"><small>Demanda</small><span>Plataforma</span></div>{previewFields(info.filter(f => f.key !== "labels"))}</div></section>
         <section><h4><span>2</span>Etapa atual</h4><div className="studio-sample-grid">{previewFields(stage)}<div className="studio-sample-field"><small>SLA do projeto</small><span>30 dias corridos</span></div></div><div className="studio-attachment"><FileText /><div>Documento exemplo.pdf<small>Arquivo de exemplo</small></div></div></section>
-        <section><h4><span>3</span>Histórico</h4><ol className="studio-history"><li><b>Status alterado para Em andamento</b><small>02/09/2026 às 10:15</small></li><li><b>Etapa atual: Análise</b><small>02/09/2026 às 10:15</small></li><li><b>Arquivo anexado: Documento exemplo.pdf</b><small>02/09/2026 às 10:15</small></li><li><b>Ticket criado</b><small>01/09/2026 às 14:20</small></li></ol></section>
+        <section><h4><span>3</span>Histórico</h4><div className="studio-sample-grid">{previewFields(history)}</div><ol className="studio-history"><li><b>Status alterado para Em andamento</b><small>02/09/2026 às 10:15</small></li><li><b>Etapa atual: Análise</b><small>02/09/2026 às 10:15</small></li><li><b>Arquivo anexado: Documento exemplo.pdf</b><small>02/09/2026 às 10:15</small></li><li><b>Ticket criado</b><small>01/09/2026 às 14:20</small></li></ol></section>
       </div>
     </section>
   </div>;
