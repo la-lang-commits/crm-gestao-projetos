@@ -57,6 +57,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { DeliveryCalendar } from "@/components/delivery-calendar";
 import { TasksBoard } from "@/components/tasks-board";
 import { supabase } from "@/lib/supabase";
 import { activitySeries, nextWorkflowStep, ownerCounts, projectDuration, projectsInPeriod } from "@/lib/project-metrics";
@@ -450,6 +451,7 @@ function Workspace({ user }: { user: any }) {
     [catalog, setCatalog] = useState<CatalogItem[]>([]),
     [fields, setFields] = useState<FieldDef[]>([]),
     [view, setView] = useState("Início"),
+    [calendarTaskId, setCalendarTaskId] = useState(""),
     [projectMode, setProjectMode] = useState<"list" | "kanban">("list"),
     [period, setPeriod] = useState("Semanal"),
     [query, setQuery] = useState(""),
@@ -937,8 +939,8 @@ function Workspace({ user }: { user: any }) {
             active={view === "Projetos"}
             click={() => setView("Projetos")}
           />
-          <Nav icon={<List />} label="Tarefas" active={view === "Tarefas"} click={() => setView("Tarefas")} />
-          <Nav icon={<CalendarDays />} label="Calendário" />
+          <Nav icon={<List />} label="Tarefas" active={view === "Tarefas"} click={() => { setCalendarTaskId(""); setView("Tarefas"); }} />
+          <Nav icon={<CalendarDays />} label="Calendário" active={view === "Calendário"} click={() => setView("Calendário")} />
           <Nav icon={<BarChart3 />} label="Relatórios" active={view === "Relatórios"} click={() => setView("Relatórios")} />
         </nav>
         <p className="section-label">
@@ -1011,21 +1013,21 @@ function Workspace({ user }: { user: any }) {
               <h1>
                 {view === "Início"
                   ? "Olá, " + name.split(" ")[0] + "!"
-                  : view === "Tarefas" ? "Tarefas" : view === "Configurações"
+                  : view === "Calendário" ? "Calendário de entregas" : view === "Tarefas" ? "Tarefas" : view === "Configurações"
                     ? "Configurações"
                     : current?.name || "Sem área"}
               </h1>
               <span>
                 {view === "Início"
                   ? "Acompanhe prazos, etapas e movimentações da sua área."
-                  : view === "Tarefas" ? "Acompanhe suas atividades e as demandas da equipe." : view === "Configurações"
+                  : view === "Calendário" ? "Acompanhe os prazos de projetos e tarefas da área." : view === "Tarefas" ? "Acompanhe suas atividades e as demandas da equipe." : view === "Configurações"
                     ? "Defina o catálogo e os campos usados nos tickets desta área."
                     : projects.length +
                       " projetos visíveis somente para esta área."}
               </span>
             </div>
             <div className="heading-actions">
-              {view !== "Tarefas" && <span className="role-badge">
+              {view !== "Tarefas" && view !== "Calendário" && <span className="role-badge">
                 <ShieldCheck />
                 {roleLabels[role]}
               </span>}
@@ -1085,7 +1087,9 @@ function Workspace({ user }: { user: any }) {
               openReports={() => setView("Relatórios")}
             />
           ) : view === "Tarefas" ? (
-            <TasksBoard key={areaId} areaId={areaId} userId={user.id} projects={allProjects.filter(p=>p.areaId===areaId)} members={scopedMembers} globalQuery={query} />
+            <TasksBoard key={areaId} initialTaskId={calendarTaskId} areaId={areaId} userId={user.id} projects={allProjects.filter(p=>p.areaId===areaId)} members={scopedMembers} globalQuery={query} />
+          ) : view === "Calendário" ? (
+            <DeliveryCalendar key={areaId} areaId={areaId} areas={areas} onAreaChange={setAreaId} projects={allProjects.filter(p => p.areaId === areaId)} members={scopedMembers} query={query} onOpenProject={id => { const project = allProjects.find(p => p.id === id && p.areaId === areaId); if (project) setDetailProject(project); }} onOpenTask={id => { setCalendarTaskId(id); setView("Tarefas"); }} />
           ) : view === "Relatórios" ? (
             <DurationReport projects={projects} openProject={setDetailProject} />
           ) : (
