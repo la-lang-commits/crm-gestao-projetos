@@ -50,12 +50,12 @@ export function DeliveryCalendar({ areaId, areas, onAreaChange, projects, member
   function navigate(direction: number) { setAnchor(mode === 'week' ? shiftDay(anchor, direction * 7) : shiftMonth(anchor, direction)); setSelectedId(''); }
   function eventButton(event: Delivery) {
     const deadline = deliveryStatus(event, today);
-    return <button key={event.id} className={`delivery-event ${event.kind}${selectedId === event.id ? ' selected' : ''}`} aria-pressed={selectedId === event.id} aria-label={`${event.title}, ${dateLabel(event.date)}, ${deadline.label}`} onClick={() => setSelectedId(event.id)}>
+    return <button key={event.id} className={`delivery-event delivery-${event.kind}${selectedId === event.id ? ' selected' : ''}`} aria-pressed={selectedId === event.id} aria-label={`${event.title}, ${dateLabel(event.date)}, ${deadline.label}`} onClick={() => setSelectedId(event.id)}>
       <span className="delivery-event-title"><i />{event.title}</span><span className={`delivery-badge ${deadline.tone}`}>{deadline.label}</span>
     </button>;
   }
   return <div className="delivery-page">
-    <div className="delivery-filters"><div className="delivery-segments" role="group" aria-label="Tipo de entrega">{([['all', 'Todos'], ['project', 'Projetos'], ['task', 'Tarefas']] as const).map(([value, label]) => <button key={value} className={kind === value ? 'active' : ''} aria-pressed={kind === value} onClick={() => { setKind(value); setSelectedId(''); }}>{value !== 'all' && <i className={value} />}{label} ({periodEvents.filter(e => value === 'all' || e.kind === value).length})</button>)}</div>
+    <div className="delivery-filters"><div className="delivery-segments" role="group" aria-label="Tipo de entrega">{([['all', 'Todos'], ['project', 'Projetos'], ['task', 'Tarefas']] as const).map(([value, label]) => <button key={value} className={kind === value ? 'active' : ''} aria-pressed={kind === value} onClick={() => { setKind(value); setSelectedId(''); }}>{value !== 'all' && <i className={"delivery-" + value} />}{label} ({periodEvents.filter(e => value === 'all' || e.kind === value).length})</button>)}</div>
       <label>Responsável<select value={owner} onChange={e => { setOwner(e.target.value); setSelectedId(''); }}><option value="">Todos</option><option value="unassigned">Sem responsável</option>{owners.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
       <label>Área<select value={areaId} onChange={e => onAreaChange(e.target.value)}>{areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
     </div>
@@ -67,8 +67,8 @@ export function DeliveryCalendar({ areaId, areas, onAreaChange, projects, member
       {!events.length && !loading && <p className="delivery-empty">Nenhuma entrega com prazo neste período para os filtros selecionados.</p>}
       <footer className="delivery-footer">Projetos: vencimento do SLA total. Tarefas: prazo cadastrado. Datas no horário de Brasília.{undated > 0 && <span>{undated} {undated === 1 ? 'item sem prazo não aparece' : 'itens sem prazo não aparecem'} no calendário.</span>}</footer>
       </section>
-      {selected && <aside className="delivery-detail" aria-label="Detalhes da entrega"><header><i className={selected.kind} /><h2>{selected.title}</h2><button aria-label="Fechar detalhes" onClick={() => setSelectedId('')}><X /></button></header><dl>
-        <div><FileText /><dt>Tipo</dt><dd><span className={`delivery-type ${selected.kind}`}>{selected.kind === 'project' ? 'Projeto' : 'Tarefa'}</span></dd></div>
+      {selected && <aside className="delivery-detail" aria-label="Detalhes da entrega"><header><i className={"delivery-" + selected.kind} /><h2>{selected.title}</h2><button aria-label="Fechar detalhes" onClick={() => setSelectedId('')}><X /></button></header><dl>
+        <div><FileText /><dt>Tipo</dt><dd><span className={`delivery-type delivery-${selected.kind}`}>{selected.kind === 'project' ? 'Projeto' : 'Tarefa'}</span></dd></div>
         <div><CalendarDays /><dt>Data</dt><dd>{dateLabel(selected.date, { day: '2-digit', month: '2-digit', year: 'numeric', weekday: 'long' })}</dd></div>
         <div><Clock3 /><dt>Status do prazo</dt><dd><span className={`delivery-badge ${deliveryStatus(selected, today).tone}`}>{deliveryStatus(selected, today).label}</span></dd></div>
         <div><FileText /><dt>Projeto</dt><dd>{selected.project}<small>TK-{String(selected.ticket).padStart(6, '0')}</small></dd></div>
