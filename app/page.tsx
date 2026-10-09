@@ -3,7 +3,6 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Activity,
-  BarChart3,
   Bell,
   Building2,
   CalendarDays,
@@ -941,7 +940,6 @@ function Workspace({ user }: { user: any }) {
           />
           <Nav icon={<List />} label="Tarefas" active={view === "Tarefas"} click={() => { setCalendarTaskId(""); setView("Tarefas"); }} />
           <Nav icon={<CalendarDays />} label="Cronograma" active={view === "Calendário"} click={() => setView("Calendário")} />
-          <Nav icon={<BarChart3 />} label="Relatórios" active={view === "Relatórios"} click={() => setView("Relatórios")} />
         </nav>
         <p className="section-label">
           ÁREAS <span>{role === "super" ? "Todas" : "Meu acesso"}</span>
@@ -1084,14 +1082,11 @@ function Workspace({ user }: { user: any }) {
               setPeriod={setPeriod}
               openProjects={() => setView("Projetos")}
               members={areaMembers}
-              openReports={() => setView("Relatórios")}
             />
           ) : view === "Tarefas" ? (
             <TasksBoard key={areaId} initialTaskId={calendarTaskId} areaId={areaId} userId={user.id} projects={allProjects.filter(p=>p.areaId===areaId)} members={scopedMembers} globalQuery={query} />
           ) : view === "Calendário" ? (
             <ProjectGantt key={areaId} areaId={areaId} areas={areas} onAreaChange={setAreaId} projects={allProjects.filter(p => p.areaId === areaId)} members={scopedMembers} query={query} onOpenProject={id => { const project = allProjects.find(p => p.id === id && p.areaId === areaId); if (project) setDetailProject(project); }} />
-          ) : view === "Relatórios" ? (
-            <DurationReport projects={projects} openProject={setDetailProject} />
           ) : (
             <ProjectsView
               projects={projects}
@@ -1248,7 +1243,6 @@ function Dashboard({
   setPeriod,
   openProjects,
   members,
-  openReports,
 }: {
   projects: Project[];
   fields: FieldDef[];
@@ -1256,7 +1250,6 @@ function Dashboard({
   setPeriod: (x: string) => void;
   openProjects: () => void;
   members: Member[];
-  openReports: () => void;
 }) {
   const counts = statuses.map((s) => ({
       s,
@@ -1286,7 +1279,7 @@ function Dashboard({
       </section>
       <DashboardSlaOverview projects={projects} period={period} setPeriod={setPeriod} />
       <section className="recent reference-dashboard-card"><header><div><h2>Carga de trabalho por responsável</h2><p>Quantidade de projetos por responsável atual, distribuída por status.</p></div><button onClick={openProjects}>Ver todos ›</button></header><OwnerChart projects={projects} members={members} /></section>
-      <SlaConsumption projects={projects} openReports={openReports} />
+      <SlaConsumption projects={projects} openProjects={openProjects} />
 
     </>
   );
@@ -1302,10 +1295,10 @@ function DashboardSlaOverview({projects,period,setPeriod}: {projects: Project[];
   return <section className="sla-dashboard-grid"><article className="recent reference-dashboard-card"><header><div><h2>Projetos por situação do SLA</h2><p>Visão geral dos prazos dos projetos ativos.</p></div><span className="dashboard-total">Projetos ativos<b>{active.length}</b></span></header><div className="sla-donut-body"><div className="sla-donut" role="img" aria-label={groups.map(g=>g.label+': '+g.count).join('; ')} style={{background:active.length ? 'conic-gradient('+gradient+')' : '#e5e4dc'}}><div><strong>{active.length}</strong><small>projetos</small></div></div><ul>{groups.filter(g=>g.tone!=="neutral" || g.count>0).map(g=><li key={g.tone}><i style={{background:g.color}}/><span>{g.label}{g.tone==="warning" && <small>Próximo do vencimento do SLA</small>}</span><b>{g.count}</b><em>{active.length ? Math.round(g.count/active.length*100) : 0}%</em></li>)}</ul></div></article>
   <article className="recent reference-dashboard-card"><header><div><h2>Status geral dos projetos</h2><p>{period === "Semanal" ? "Semana atual · desde segunda-feira" : "Mês atual"} · status atual dos projetos movimentados.</p><div className="status-period" role="group" aria-label="Período do gráfico">{["Semanal","Mensal"].map(value=><button key={value} aria-pressed={period===value} className={period===value ? "active" : ""} onClick={()=>setPeriod(value)}>{value}</button>)}</div></div><span className="dashboard-total">Total no período<b>{periodProjects.length}</b></span></header><div className="dashboard-status-chart">{statuses.map(status=>{const count=periodProjects.filter(p=>p.status===status).length;return <div key={status}><div className="dashboard-status-bar"><span style={{height:count/max*100+'%',background:chartColors[status]}}><b>{count}</b></span></div><small>{status}</small></div>})}</div></article></section>;
 }
-function SlaConsumption({projects,openReports}: {projects: Project[];openReports:()=>void}) {
+function SlaConsumption({projects,openProjects}: {projects: Project[];openProjects:()=>void}) {
   const [filter,setFilter]=useState("Todos os projetos");
   const visible=projects.filter(p=>filter==="Todos os projetos" || p.status===filter);
-  return <section className="recent reference-dashboard-card consumption-card"><header><div><h2>Consumo do SLA por projeto</h2><p>Prazo já consumido em relação ao SLA total de cada projeto.</p></div><div className="consumption-actions"><select aria-label="Filtrar projetos por status" value={filter} onChange={e=>setFilter(e.target.value)}>{["Todos os projetos",...statuses].map(s=><option key={s}>{s}</option>)}</select><button onClick={openReports}>Ver detalhes</button></div></header><div className="chart-legend consumption-legend"><span><i style={{background:"#ce7943"}}/>Prazo consumido</span><span><i style={{background:"#e7e5e0"}}/>Prazo restante</span></div><ul className="consumption-rows">{visible.map(p=>{
+  return <section className="recent reference-dashboard-card consumption-card"><header><div><h2>Consumo do SLA por projeto</h2><p>Prazo já consumido em relação ao SLA total de cada projeto.</p></div><div className="consumption-actions"><select aria-label="Filtrar projetos por status" value={filter} onChange={e=>setFilter(e.target.value)}>{["Todos os projetos",...statuses].map(s=><option key={s}>{s}</option>)}</select><button onClick={openProjects}>Ver detalhes</button></div></header><div className="chart-legend consumption-legend"><span><i style={{background:"#ce7943"}}/>Prazo consumido</span><span><i style={{background:"#e7e5e0"}}/>Prazo restante</span></div><ul className="consumption-rows">{visible.map(p=>{
     const completed=p.status==="Concluído";
     const end = completed ? p.events.filter(e=>e.toStatus==="Concluído" || e.toStage==="Concluído").map(e=>e.created_at).sort().at(-1) || (p.workflow.length && p.workflow.every(s=>s.status==="completed" || s.status==="skipped") ? p.workflow.map(s=>s.completedAt).filter(Boolean).sort().at(-1) : null) : new Date().toISOString();
     const valid=!!p.slaDueAt && Number.isFinite(Date.parse(p.slaDueAt)) && p.slaValue>0 && !!end && p.status!=="Cancelado";
@@ -1378,25 +1371,6 @@ function DurationSummary({ projects }: { projects: Project[] }) {
     {completed.length > durations.length && <small>{completed.length - durations.length} concluído(s) sem data de conclusão, fora da média.</small>}
     <small>Tempo real em dias corridos. Não representa o SLA nem uma previsão de entrega.</small>
   </div>;
-}
-function DurationReport({ projects, openProject }: { projects: Project[]; openProject: (p: Project) => void }) {
-  const [filter, setFilter] = useState("Todos");
-  const filtered = projects.filter(p => filter === "Todos" || (filter === "Em aberto" ? p.status !== "Concluído" && p.status !== "Cancelado" : p.status === filter));
-  return <section className="recent duration-report">
-    <header><div><h2>Tempo por projeto</h2><p>Da data de abertura até hoje ou até a conclusão registrada</p></div>
-      <label>Status <select value={filter} onChange={e => setFilter(e.target.value)}>{["Todos", "Em aberto", "Concluído", "Cancelado"].map(s => <option key={s}>{s}</option>)}</select></label>
-    </header>
-    <DurationSummary projects={projects} />
-    <div className="metrics-table-wrap"><table className="metrics-table duration-table">
-      <thead><tr><th scope="col">Projeto / demanda</th><th scope="col">Responsável atual</th><th scope="col">Status</th><th scope="col">Abertura</th><th scope="col">Tempo decorrido / duração</th><th scope="col">SLA previsto</th></tr></thead>
-      <tbody>{filtered.map(p => { const days = projectDuration(p); return <tr key={p.id}>
-        <th scope="row"><button onClick={() => openProject(p)}>{p.name}</button><small>{ticket(p.ticket)} · {p.demand}</small></th>
-        <td>{p.owner}</td><td>{p.status}</td><td>{new Date(p.openedAt + "T12:00:00").toLocaleDateString("pt-BR")}</td>
-        <td>{days === null ? (p.status === "Cancelado" ? "Cancelado · fora da média" : "Data indisponível") : `${days} dia${days === 1 ? "" : "s"}`}<small>{days !== null ? (p.status === "Concluído" ? "Duração até a conclusão" : "Em aberto · até hoje") : ""}</small></td>
-        <td>{formatSla(p.slaValue, p.slaUnit)}</td>
-      </tr>; })}</tbody>
-    </table>{!filtered.length && <p className="metrics-note">Nenhum projeto neste filtro.</p>}</div>
-  </section>;
 }
 type ListProps = {
   projects: Project[];
