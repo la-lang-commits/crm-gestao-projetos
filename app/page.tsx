@@ -56,6 +56,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { OverviewDashboard } from "@/components/overview-dashboard";
 import { ProjectGantt } from "@/components/project-gantt";
 import { TasksBoard } from "@/components/tasks-board";
 import { supabase } from "@/lib/supabase";
@@ -1001,7 +1002,7 @@ function Workspace({ user }: { user: any }) {
           </div>
         </header>
         <div className="content">
-          <div className="heading">
+          <div className="heading" style={view === "Início" ? {display:"none"} : undefined}>
             <div>
               <p>
                 {view === "Início"
@@ -1075,14 +1076,7 @@ function Workspace({ user }: { user: any }) {
               <p>Cadastre uma área ou peça acesso a um administrador.</p>
             </div>
           ) : view === "Início" ? (
-            <Dashboard
-              projects={projects}
-              fields={areaFields}
-              period={period}
-              setPeriod={setPeriod}
-              openProjects={() => setView("Projetos")}
-              members={areaMembers}
-            />
+            <OverviewDashboard key={areaId} tickets={projects.map(p=>({...p,sla:slaInfo(p)}))} catalog={areaCatalog} members={areaMembers} areas={areas} areaId={areaId} onAreaChange={setAreaId} openProjects={()=>setView("Projetos")} openTasks={()=>setView("Tarefas")} openTicket={id=>{const p=projects.find(p=>p.id===id);if(p)setDetailProject(p);}} />
           ) : view === "Tarefas" ? (
             <TasksBoard key={areaId} initialTaskId={calendarTaskId} areaId={areaId} userId={user.id} projects={allProjects.filter(p=>p.areaId===areaId)} members={scopedMembers} globalQuery={query} />
           ) : view === "Calendário" ? (
