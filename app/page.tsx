@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Activity,
+  CircleHelp,
   Bell,
   Building2,
   CalendarDays,
@@ -57,6 +58,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { OverviewDashboard } from "@/components/overview-dashboard";
+import { HelpCenter } from "@/components/help-center";
 import { ProjectGantt } from "@/components/project-gantt";
 import { TasksBoard } from "@/components/tasks-board";
 import { supabase } from "@/lib/supabase";
@@ -941,6 +943,7 @@ function Workspace({ user }: { user: any }) {
           />
           <Nav icon={<List />} label="Tarefas" active={view === "Tarefas"} click={() => { setCalendarTaskId(""); setView("Tarefas"); }} />
           <Nav icon={<CalendarDays />} label="Cronograma" active={view === "Calendário"} click={() => setView("Calendário")} />
+          <Nav icon={<CircleHelp />} label="Ajuda" active={view === "Ajuda"} click={() => setView("Ajuda")} />
         </nav>
         <p className="section-label">
           ÁREAS <span>{role === "super" ? "Todas" : "Meu acesso"}</span>
@@ -1012,14 +1015,14 @@ function Workspace({ user }: { user: any }) {
               <h1>
                 {view === "Início"
                   ? "Olá, " + name.split(" ")[0] + "!"
-                  : view === "Calendário" ? "Cronograma de projetos" : view === "Tarefas" ? "Tarefas" : view === "Configurações"
+                  : view === "Ajuda" ? "Ajuda" : view === "Calendário" ? "Cronograma de projetos" : view === "Tarefas" ? "Tarefas" : view === "Configurações"
                     ? "Configurações"
                     : current?.name || "Sem área"}
               </h1>
               <span>
                 {view === "Início"
                   ? "Acompanhe prazos, etapas e movimentações da sua área."
-                  : view === "Calendário" ? "Acompanhe o andamento dos projetos por etapas, prazos e responsáveis." : view === "Tarefas" ? "Acompanhe suas atividades e as demandas da equipe." : view === "Configurações"
+                  : view === "Ajuda" ? "Seu guia para usar cada parte do CRM." : view === "Calendário" ? "Acompanhe o andamento dos projetos por etapas, prazos e responsáveis." : view === "Tarefas" ? "Acompanhe suas atividades e as demandas da equipe." : view === "Configurações"
                     ? "Defina o catálogo e os campos usados nos tickets desta área."
                     : projects.length +
                       " projetos visíveis somente para esta área."}
@@ -1053,7 +1056,9 @@ function Workspace({ user }: { user: any }) {
               </button>
             </div>
           )}
-          {loading ? (
+          {view === "Ajuda" ? (
+            <HelpCenter navigate={setView} />
+          ) : loading ? (
             <Loading text="Atualizando dados..." inline />
           ) : view === "Configurações" ? (
             <Configuration
