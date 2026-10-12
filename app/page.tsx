@@ -58,6 +58,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { OverviewDashboard } from "@/components/overview-dashboard";
+import { TicketFlow } from "@/components/ticket-flow";
+import "@/components/ticket-redesign.css";
 import { HelpCenter } from "@/components/help-center";
 import { ProjectGantt } from "@/components/project-gantt";
 import { TasksBoard } from "@/components/tasks-board";
@@ -1143,7 +1145,8 @@ function Workspace({ user }: { user: any }) {
             event.eventType === "comentario" &&
             event.actorUserId === user.id
           }
-          quickUpdate={async ({ status, sei, ownerId, justification }) =>
+          assign={async (ownerId, reason) => { const {error}=await supabase.rpc("assign_ticket_owner",{p_project_id:detailProject.id,p_owner_id:ownerId,p_reason:reason});if(error)throw error;await load(true);setNotice("Responsável atualizado. A etapa e os prazos foram mantidos."); }}
+          quickUpdate={async ({ status, sei, ownerId, priority, justification }) =>
             updateProject({
               id: detailProject.id,
               catalogId: detailProject.catalogId,
@@ -1153,7 +1156,7 @@ function Workspace({ user }: { user: any }) {
               stage: detailProject.stage,
               ownerId,
               observation: detailProject.observation,
-              priority: detailProject.priority,
+              priority: priority || detailProject.priority,
               custom: Object.fromEntries(
                 detailProject.customValues.map((value) => [value.field_id, value.value]),
               ),
@@ -1755,8 +1758,10 @@ type ProjectDetailProps = {
   addComment: (id: string) => void;
   removeComment: (eventId: string) => Promise<void>;
   canDeleteComment: (event: Event) => boolean;
+  assign: (ownerId: string, reason: string) => Promise<void>;
   quickUpdate: (value: {
     status: Status;
+    priority?: Priority;
     sei: string;
     ownerId: string;
     justification: string;
@@ -1786,6 +1791,7 @@ function ProjectDetail({
   removeComment,
   canDeleteComment,
   quickUpdate,
+  assign,
   uploadAttachment,
   downloadAttachment,
   removeAttachment,
@@ -1800,7 +1806,15 @@ function ProjectDetail({
     : { label: "Sem etapa ativa", tone: "neutral" };
   const currentStepLate = stepSla.tone === "late";
   const custom = fields.filter(field => !field.system && field.visible).map(field => ({ field, value: project.customValues.find(value => value.field_id === field.id)?.value || "" }));
-  const [quickEdit, setQuickEdit] = useState<"status" | "sei" | "owner" | null>(null);
+  const [activityTab,setActivityTab]=useState("comments");
+  const [assigning,setAssigning]=useState(false);
+  const [assignee,setAssignee]=useState(project.ownerId);
+  const [assignReason,setAssignReason]=useState("");
+  const [assignError,setAssignError]=useState("");
+  const [assignBusy,setAssignBusy]=useState(false);
+  const nextStep=nextWorkflowStep(project.workflow);
+  const [quickEdit, setQuickEdit] = useState<"status" | "sei" | "owner" | "priority" | null>(null);
+  const [quickPriority,setQuickPriority]=useState<Priority>(project.priority);
   const [quickStatus, setQuickStatus] = useState<Status>(project.status);
   const [quickSei, setQuickSei] = useState(project.sei);
   const [quickOwnerId, setQuickOwnerId] = useState(project.ownerId);
@@ -1829,7 +1843,8 @@ function ProjectDetail({
     setQuickError("");
     try {
       await quickUpdate({
-        status: quickStatus,
+        status: quickEdit === "priority" ? project.status : quickStatus,
+        priority: quickEdit === "priority" ? quickPriority : project.priority,
         sei: quickSei,
         ownerId: quickOwnerId,
         justification: quickEdit === "sei" ? "Atualização do nº do SEI." : quickJustification.trim(),
@@ -1890,17 +1905,17 @@ function ProjectDetail({
                 )}
                 {quickEdit === "sei" && quickError && <small className="quick-edit-error" role="alert">{quickError}</small>}
               </article>}
-      {show("status") && <>{quickEdit === "status" && (
+      {(show("status") || show("priority")) && <>{(quickEdit === "status" || quickEdit === "priority") && (
               <div className="quick-ticket-editor">
                 <header>
-                  <b>Editar status</b>
+                  <b>{quickEdit === "priority" ? "Editar prioridade" : "Editar status"}</b>
                   <button onClick={() => setQuickEdit(null)} aria-label="Fechar edição"><X /></button>
                 </header>
-                  <label>Status
+                  {quickEdit === "priority" ? <label>Prioridade<select value={quickPriority} onChange={e=>setQuickPriority(e.target.value as Priority)}>{["Baixa","Média","Alta"].map(v=><option key={v}>{v}</option>)}</select></label> : <label>Status
                     <select value={quickStatus} onChange={(event) => setQuickStatus(event.target.value as Status)}>
                       {statuses.map((status) => <option key={status}>{status}</option>)}
                     </select>
-                  </label>
+                  </label>}
                 <label>Justificativa da alteração
                   <textarea value={quickJustification} onChange={(event) => setQuickJustification(event.target.value)} placeholder="Explique por que este dado foi alterado" />
                 </label>
@@ -1913,7 +1928,7 @@ function ProjectDetail({
       {show("openedAt") && (
                 <div><b>{label("openedAt", "Data de abertura")}</b><span>{new Date(project.openedAt + "T12:00:00").toLocaleDateString("pt-BR")}</span></div>
               )}
-              {show("priority") && <div><b>{label("priority", "Prioridade")}</b><span>{project.priority}</span></div>}
+              {show("priority") && <div><b>{label("priority", "Prioridade")}</b><button className="ticket-assign-trigger" onClick={()=>{setQuickPriority(project.priority);setQuickSei(project.sei);setQuickOwnerId(project.ownerId);setQuickJustification("");setQuickError("");setQuickEdit("priority");}}>{project.priority}<Pencil/></button></div>}
       {show("labels") && (
               <div className="header-label-control">
                 <button
@@ -1957,7 +1972,7 @@ function ProjectDetail({
                 )}
               </div>
             )}
-      {fields.filter(f => f.visible && fieldSection(f) === section && ["stage", "ownerId"].includes(f.key)).map(f => <article key={f.id}><b>{f.label}</b><span>{f.key === "stage" ? (currentStep?.stageName || project.stage || "—") : project.owner || "Não informado"}</span></article>)}
+      {fields.filter(f => f.visible && fieldSection(f) === section && ["stage", "ownerId"].includes(f.key)).map(f => <article key={f.id}><b>{f.label}</b><span>{f.key === "stage" ? (currentStep?.stageName || project.stage || "—") : project.owner || "Não informado"}</span>{f.key === "ownerId" && !["Concluído","Cancelado"].includes(project.status) && <button className="ticket-assign-trigger" onClick={()=>{setAssignee(project.ownerId);setAssignReason("");setAssignError("");setAssigning(true);}}><Users/>Atribuir</button>}</article>)}
       {custom.filter(item => fieldSection(item.field) === section).map(item => <article key={item.field.id}><b>{item.field.label}</b><span>{item.value || "—"}</span></article>)}
     </div>;
   }
@@ -1965,7 +1980,7 @@ function ProjectDetail({
   return (
     <>
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="process-dialog">
+      <DialogContent className="process-dialog ticket-redesign">
         <DialogHeader className="process-header">
           <DialogTitle className="sr-only">Processo {ticket(project.ticket)}</DialogTitle>
           <DialogDescription className="sr-only">Detalhes, prazos e histórico do processo.</DialogDescription>
@@ -1976,9 +1991,12 @@ function ProjectDetail({
             </div>
 
           </div>
+          <h2 className="ticket-hero-title">{project.name}</h2>
+          <div className="ticket-hero-meta"><span><small>Projeto</small>{project.name}</span><span><small>Demanda</small>{project.demand}</span>{show("sei")&&<span><small>Nº do SEI</small>{project.sei||"Não informado"}</span>}{show("status")&&<span><small>Status do projeto</small><b className={"pill "+statusConfig[project.status].className}>{project.status}</b></span>}{show("priority")&&<span><small>Prioridade</small>{project.priority}</span>}{show("labels")&&<span><small>Etiquetas</small>{project.labels.map(l=><em key={l.id}>{l.label_text}</em>)}</span>}</div>
         </DialogHeader>
 
         <div className="process-layout process-three-columns">
+          <div className="ticket-summary-strip"><article><CalendarDays/><div><small>SLA da demanda</small><b>{formatSla(project.slaValue,project.slaUnit)}</b></div></article>{show("openedAt")&&<article><CalendarDays/><div><small>Data de abertura</small><b>{workflowDate(project.openedAt)}</b></div></article>}<article><CalendarDays/><div><small>Prazo previsto (etapa atual)</small><b>{workflowDate(currentStep?.dueAt)}</b></div></article><article className={currentStepLate?"late":""}><Clock3/><div><small>Situação da etapa</small><b>{stepSla.label}</b></div></article><div className="ticket-top-advance">{currentStep&&<button className="primary" onClick={()=>edit(project)}><CheckCircle2/>{nextStep?"Encaminhar para próxima etapa":"Concluir projeto"}</button>}{nextStep&&<small>Próxima etapa: {nextStep.stageName}<br/>Responsável: {nextStep.assignee||"Não definido"}</small>}</div></div>
           <section className="process-column process-ticket-column">
             <header className="process-column-title">
               <div><span>1</span><div><b>Informações do ticket</b><small>Dados preenchidos na abertura</small></div></div>
@@ -1995,28 +2013,15 @@ function ProjectDetail({
               {renderSection("info")}
             </div>
 
-            <div className="ticket-secondary-fields">
-
-              {project.workflow.some((step) => step.status === "current") && (
-                <button className="primary wide ticket-advance" onClick={() => edit(project)}>
-                  <CheckCircle2 />
-                  {project.workflow.some((step) => step.status === "pending")
-                    ? "Encaminhar para próxima etapa"
-                    : "Concluir projeto"}
-                </button>
-              )}
-
-
-            </div>
           </section>
 
           <section className="process-column process-main process-sla-column">
             <section className="process-section process-stage-summary">
               <header>
-                <div><span className="division-number">2</span><div><b>Etapa atual</b><small>Andamento e prazos do processo</small></div></div>
+                <div><span className="division-number">2</span><div><b>Fluxo do projeto</b><small>Acompanhe o andamento e os responsáveis por cada etapa.</small></div></div><button className="ticket-assign-trigger" onClick={e=>e.currentTarget.closest(".process-layout")?.querySelector(".reference-sla")?.scrollIntoView({behavior:"smooth",block:"nearest"})}>Ver todas as etapas e prazos</button>
               </header>
               {renderSection("stage")}
-              {(show("ownerId") || show("stage")) && <WorkflowOwners project={project} showStages={show("stage")} showOwners={show("ownerId")} />}
+              {(show("ownerId") || show("stage")) && <TicketFlow steps={project.workflow} showStages={show("stage")} showOwners={show("ownerId")} />}
             </section>
 
             <section className="process-section reference-sla">
@@ -2093,14 +2098,15 @@ function ProjectDetail({
 
           <aside className="process-activity">
             <header>
-              <div><span className="division-number">3</span><MessageCircle /><b>Comentários e histórico</b></div>
+              <div><span className="division-number">3</span><MessageCircle /><b>Atividade</b></div>
               <small>{project.events.length} registros</small>
             </header>
+            <div className="ticket-activity-tabs"><button aria-pressed={activityTab==="comments"} onClick={()=>setActivityTab("comments")}>Comentários</button><button aria-pressed={activityTab==="history"} onClick={()=>setActivityTab("history")}>Histórico de movimentações</button></div>
             {renderSection("history")}
-            {currentStepLate && (
+            {activityTab === "comments" && currentStepLate && (
               <div className="late-comment-warning"><Clock3 />Esta etapa está atrasada. Registre a justificativa abaixo.</div>
             )}
-            <div className="comment-composer process-comment">
+            <div className="comment-composer process-comment" hidden={activityTab !== "comments"}>
               <textarea
                 value={commentDrafts[project.id] || ""}
                 onChange={(event) => setCommentDrafts((drafts) => ({ ...drafts, [project.id]: event.target.value }))}
@@ -2109,9 +2115,9 @@ function ProjectDetail({
               />
               <button onClick={() => addComment(project.id)} disabled={(commentDrafts[project.id]?.trim().length || 0) < 3}><Send />Comentar</button>
             </div>
-            {project.events.length ? (
+            {(activityTab === "comments" ? project.events.filter(e=>e.eventType==="comentario") : project.events.filter(e=>e.eventType!=="comentario")).length ? (
               <div className="activity-list">
-                {project.events.map((event) => (
+                {project.events.filter(e=>activityTab === "comments" ? e.eventType==="comentario" : e.eventType!=="comentario").map((event) => (
                   <article className="activity-item" key={event.id}>
                     <i>{event.eventType === "comentario" ? <MessageCircle /> : <Activity />}</i>
                     <div>
@@ -2149,6 +2155,7 @@ function ProjectDetail({
         </div>
       </DialogContent>
     </Dialog>
+    <Dialog open={assigning} onOpenChange={value=>{if(!assignBusy)setAssigning(value);}}><DialogContent className="ticket-assign-dialog"><DialogHeader><DialogTitle>Atribuir responsável</DialogTitle><DialogDescription>Transfira a responsabilidade atual para alguém desta área. A etapa e os prazos serão mantidos.</DialogDescription></DialogHeader><label>Responsável<select value={assignee} onChange={e=>setAssignee(e.target.value)}><option value="">Selecione uma pessoa</option>{members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></label><label>Motivo<textarea value={assignReason} onChange={e=>setAssignReason(e.target.value)} maxLength={2000} placeholder="Ex.: cobertura durante minhas férias"/></label>{assignError&&<p role="alert">{assignError}</p>}<button className="primary" disabled={assignBusy||!assignee||assignee===project.ownerId||assignReason.trim().length<3} onClick={async()=>{setAssignBusy(true);setAssignError("");try{await assign(assignee,assignReason.trim());setAssigning(false);}catch(e){setAssignError(e instanceof Error?e.message:"Não foi possível atribuir.");}finally{setAssignBusy(false);}}}>{assignBusy?"Salvando...":"Confirmar atribuição"}</button></DialogContent></Dialog>
     <AlertDialog
       open={!!commentToDelete}
       onOpenChange={(dialogOpen) => {
@@ -3069,7 +3076,7 @@ function TicketFieldPreview({ fields, busy, change, edit, remove }: {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<FieldSection | null>(null);
   const [editing, setEditing] = useState(false);
-  const samples: Record<string, string> = { sei: "SEI-123456/2026-01", openedAt: "01/09/2026", status: "Em andamento", stage: "Análise", ownerId: "Responsável da etapa", priority: "Média", labels: "Sustentabilidade" };
+  const samples: Record<string, string> = { sei: "SEI-123456/2026-01", openedAt: "01/09/2026", status: "Em andamento", stage: "Análise", ownerId: "Responsável atual · Atribuir", priority: "Média", labels: "Sustentabilidade" };
   const info = fields.filter(f => fieldSection(f) === "info" && f.key !== "observation");
   const stage = fields.filter(f => fieldSection(f) === "stage" && f.key !== "observation");
   const history = fields.filter(f => fieldSection(f) === "history" && f.key !== "observation");
@@ -3096,10 +3103,10 @@ function TicketFieldPreview({ fields, busy, change, edit, remove }: {
       }}><summary><span>{number}</span><b>{title}</b><small>{items.length} campos</small></summary>{fixed && !query && <p className="field-fixed-note">{fixed}</p>}{filtered.map(row)}{!filtered.length && <p className="field-fixed-note">Nenhum campo neste grupo.</p>}</details>;
   }
   function previewFields(items: FieldDef[]) {
-    return items.filter(f => f.visible).map(f => <div key={f.id} className="studio-sample-field"><small>{f.label}{f.required ? " *" : ""}</small><span>{samples[f.key] || (f.type === "date" ? "01/09/2026" : f.type === "number" ? "123" : "Conteúdo de exemplo")}</span>{editing && <button disabled={busy} aria-label={"Editar " + f.label} onClick={() => edit(f)}><Pencil /></button>}</div>);
+    return items.filter(f => f.visible).map(f => <div key={f.id} className="studio-sample-field"><small>{f.label}{f.required ? " *" : ""}</small><span>{samples[f.key] || (f.type === "date" ? "01/09/2026" : f.type === "number" ? "123" : "Conteúdo de exemplo")}</span>{f.key === "ownerId" && <small className="studio-assign-preview">Selecionar alguém da área</small>}{editing && <button disabled={busy} aria-label={"Editar " + f.label} onClick={() => edit(f)}><Pencil /></button>}</div>);
   }
   return <div className="field-studio">
-    <section className="field-studio-manager"><h3>Campos disponíveis</h3><p>Arraste pelos pontinhos para mudar de tópico. As alterações são salvas automaticamente.</p>
+    <section className="field-studio-manager"><h3>Campos disponíveis</h3><p>Arraste pelos pontinhos para mudar de tópico. O campo Responsável também exibe a ação Atribuir. As alterações são salvas automaticamente.</p>
       <label className="field-studio-search"><Search /><input placeholder="Buscar campo..." aria-label="Buscar campo" value={query} onChange={e => setQuery(e.target.value)} /></label>
       {group("Informações do ticket", "1", info.filter(f => f.visible), "Nome do projeto e demanda são definidos no catálogo e sempre exibidos.")}
       {group("Etapa atual", "2", stage.filter(f => f.visible), "Prazos e responsáveis seguem o fluxo configurado para o projeto.")}
@@ -3108,10 +3115,11 @@ function TicketFieldPreview({ fields, busy, change, edit, remove }: {
       {fields.some(f => f.key === "observation") && group("Formulário de abertura", "+", fields.filter(f => f.key === "observation"), "Observação é usada somente na abertura. No ticket, utilize os comentários.")}
     </section>
     <section className="field-studio-preview"><header><div><h3>Prévia do ticket · dados de exemplo</h3><p>As alterações são salvas automaticamente nesta área.</p></div><div className="studio-mode"><button aria-pressed={!editing} onClick={() => setEditing(false)}>Visualização</button><button aria-pressed={editing} onClick={() => setEditing(true)}>Edição</button></div></header>
-      <div className="studio-ticket"><div className="studio-ticket-top"><b># TK-0001</b>{fields.some(f => f.key === "status" && f.visible) && <span>Em andamento</span>}{fields.some(f => f.key === "labels" && f.visible && fieldSection(f) === "info") && <em>Sustentabilidade</em>}</div>
+      <div className="studio-ticket studio-reference-ticket"><div className="studio-ticket-top"><b># TK-0001</b>{fields.some(f => f.key === "status" && f.visible) && <span>Em andamento</span>}{fields.some(f => f.key === "labels" && f.visible && fieldSection(f) === "info") && <em>Sustentabilidade</em>}</div>
+        <h3 style={{padding:"12px"}}>Desenvolvimento do Hub de Boas Práticas</h3><div className="studio-reference-summary"><span>SLA da demanda<b>30 dias corridos</b></span><span>Prazo da etapa<b>26/09/2026</b></span><span>Encaminhar<b>Próxima etapa: Aprovação</b></span></div><section className="studio-reference-flow"><h4>Fluxo do projeto</h4><TicketFlow steps={[{id:"sample-1",order:1,stageName:"Análise",assignee:"Responsável da área",slaValue:5,slaUnit:"calendar_days",status:"current",startedAt:"2026-09-21",dueAt:null,completedAt:null,completedLate:false},{id:"sample-2",order:2,stageName:"Aprovação",assignee:"Próximo responsável",slaValue:5,slaUnit:"calendar_days",status:"pending",startedAt:null,dueAt:null,completedAt:null,completedLate:false}]} showStages={fields.some(f=>f.key==="stage"&&f.visible)} showOwners={fields.some(f=>f.key==="ownerId"&&f.visible)}/></section>
         <section><h4><span>1</span>Informações do ticket</h4><div className="studio-sample-grid"><div className="studio-sample-field"><small>Nome do projeto</small><span>Desenvolvimento do Hub de Boas Práticas</span></div><div className="studio-sample-field"><small>Demanda</small><span>Plataforma</span></div>{previewFields(info.filter(f => f.key !== "labels"))}</div></section>
-        <section><h4><span>2</span>Etapa atual</h4><div className="studio-sample-grid">{previewFields(stage)}<div className="studio-sample-field"><small>SLA do projeto</small><span>30 dias corridos</span></div></div><div className="studio-attachment"><FileText /><div>Documento exemplo.pdf<small>Arquivo de exemplo</small></div></div></section>
-        <section><h4><span>3</span>Histórico</h4><div className="studio-sample-grid">{previewFields(history)}</div><ol className="studio-history"><li><b>Status alterado para Em andamento</b><small>02/09/2026 às 10:15</small></li><li><b>Etapa atual: Análise</b><small>02/09/2026 às 10:15</small></li><li><b>Arquivo anexado: Documento exemplo.pdf</b><small>02/09/2026 às 10:15</small></li><li><b>Ticket criado</b><small>01/09/2026 às 14:20</small></li></ol></section>
+        <section><h4><span>2</span>Etapa atual · SLAs e responsáveis</h4><div className="studio-sample-grid">{previewFields(stage)}<div className="studio-sample-field"><small>SLA do projeto</small><span>30 dias corridos</span></div></div><div className="studio-attachment"><FileText /><div>Documento exemplo.pdf<small>Arquivo de exemplo</small></div></div></section>
+        <section><h4><span>3</span>Comentários e histórico de movimentações</h4><div className="studio-sample-grid">{previewFields(history)}</div><ol className="studio-history"><li><b>Status alterado para Em andamento</b><small>02/09/2026 às 10:15</small></li><li><b>Etapa atual: Análise</b><small>02/09/2026 às 10:15</small></li><li><b>Arquivo anexado: Documento exemplo.pdf</b><small>02/09/2026 às 10:15</small></li><li><b>Ticket criado</b><small>01/09/2026 às 14:20</small></li></ol></section>
       </div>
     </section>
   </div>;

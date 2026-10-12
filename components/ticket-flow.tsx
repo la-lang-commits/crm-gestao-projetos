@@ -1,0 +1,7 @@
+import {Check} from 'lucide-react';
+type Step={id:string;order:number;stageName:string;assignee:string;slaValue:number;slaUnit:string;status:string;startedAt:string|null;dueAt:string|null;completedAt:string|null;completedLate:boolean};
+const date=(value:string|null)=>value?new Date(value.length===10?value+'T12:00:00':value).toLocaleDateString('pt-BR',{timeZone:'America/Sao_Paulo'}):'—';
+const unit:Record<string,string>={business_days:'dias úteis',calendar_days:'dias corridos',hours:'horas',months:'meses'};
+export function TicketFlow({steps,showOwners=true,showStages=true}:{steps:Step[];showOwners?:boolean;showStages?:boolean}){
+ return <ol className="ticket-flow-line">{[...steps].sort((a,b)=>a.order-b.order).map((s,index)=>{const late=s.status==='current'&&!!s.dueAt&&Date.parse(s.dueAt)<Date.now();const tone=s.status==='completed'?'done':late?'late':s.status==='current'?'current':'pending';return <li key={s.id} className={tone}><i>{s.status==='completed'?<Check/>:index+1}</i><b>{index+1}. {showStages?s.stageName:'Etapa'}</b><em>{s.status==='completed'?s.completedLate?'Concluída com atraso':'Concluída':late?'Em atraso':s.status==='current'?'Etapa atual':s.status==='skipped'?'Ignorada':'Não iniciada'}</em>{showOwners&&<small>Responsável: {s.assignee||'Não definido'}</small>}<small>SLA: {s.slaValue} {unit[s.slaUnit]||s.slaUnit}</small>{s.status==='completed'?<small>Conclusão: {date(s.completedAt)}</small>:<><small>Início: {date(s.startedAt)}</small><small>Prazo: {date(s.dueAt)}</small></>}</li>;})}</ol>;
+}
