@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   CircleHelp,
@@ -1090,6 +1090,7 @@ function Workspace({ user }: { user: any }) {
             <ProjectGantt key={areaId} areaId={areaId} areas={areas} onAreaChange={setAreaId} projects={allProjects.filter(p => p.areaId === areaId)} members={scopedMembers} query={query} onOpenProject={id => { const project = allProjects.find(p => p.id === id && p.areaId === areaId); if (project) setDetailProject(project); }} />
           ) : (
             <ProjectsView
+              moveStatus={async (project,status)=>{const {error}=await supabase.rpc("move_ticket_kanban",{p_project_id:project.id,p_from_status:project.status,p_to_status:status});if(error)throw new Error(error.message);await load(true);}}
               projects={projects}
               mode={projectMode}
               setMode={setProjectMode}
@@ -1380,6 +1381,7 @@ type ListProps = {
   openProject?: (p: Project) => void;
   requestDelete?: (p: Project) => void;
   canDelete?: boolean;
+  moveStatus?: (project: Project, status: Status) => Promise<void>;
 };
 function ExportTicketsButton({projects,fields}: {projects:Project[];fields:FieldDef[]}) {
  const [busy,setBusy]=useState(false);
@@ -1575,11 +1577,23 @@ function Kanban({
   openProject,
   requestDelete,
   canDelete,
+  moveStatus,
 }: ListProps) {
+  const [dragged,setDragged]=useState<string|null>(null),[target,setTarget]=useState<Status|null>(null),[busy,setBusy]=useState(false),[message,setMessage]=useState(""),[error,setError]=useState("");
+  const saving=useRef(false),justDragged=useRef(false);
+  async function move(id:string,status:Status){
+    const project=projects.find(p=>p.id===id);setDragged(null);setTarget(null);
+    if(!project||project.status===status||!moveStatus||saving.current)return;
+    saving.current=true;setBusy(true);setError("");setMessage("Salvando alteração...");
+    try{await moveStatus(project,status);setMessage(ticket(project.ticket)+" movido para "+status+".");}catch(e){setError(e instanceof Error?e.message:"Não foi possível mover o ticket. Tente novamente.");setMessage("");}finally{saving.current=false;setBusy(false);}
+  }
   return (
-    <div className="kanban-board">
+    <><p className="kanban-instructions">Arraste um ticket para mudar seu status. Para avançar a etapa do fluxo, abra o ticket e use Encaminhar.</p><p className="kanban-feedback" role="status">{message}</p>{error&&<p className="error-banner" role="alert">{error}</p>}<div className="kanban-board" aria-busy={busy}>
       {statuses.map((status) => (
-        <section className="kanban-column" key={status}>
+        <section className={"kanban-column"+(target===status?" is-drop-target":"")} key={status} aria-label={"Coluna "+status}
+          onDragOver={e=>{if(dragged&&!saving.current){e.preventDefault();e.dataTransfer.dropEffect="move";setTarget(status);}}}
+          onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget as Node|null))setTarget(null);}}
+          onDrop={e=>{e.preventDefault();const id=e.dataTransfer.getData("application/x-crm-ticket");if(dragged&&id===dragged)void move(id,status);else{setTarget(null);setDragged(null);}}}>
           <header>
             <span className={"status-dot " + statusConfig[status].className} />
             <b>{status}</b>
@@ -1590,11 +1604,14 @@ function Kanban({
               .filter((p) => p.status === status)
               .map((p) => (
                 <article
-                  className="kanban-card"
+                  className={"kanban-card"+(dragged===p.id?" is-dragging":"")}
+                  draggable={!!moveStatus&&!busy}
+                  onDragStart={e=>{if(saving.current||!moveStatus){e.preventDefault();return;}justDragged.current=true;e.dataTransfer.setData("application/x-crm-ticket",p.id);e.dataTransfer.effectAllowed="move";setDragged(p.id);setError("");}}
+                  onDragEnd={()=>{setDragged(null);setTarget(null);setTimeout(()=>{justDragged.current=false;},0);}}
                   key={p.id}
                   role="button"
                   tabIndex={0}
-                  onClick={() => openProject?.(p)}
+                  onClick={() => {if(!justDragged.current&&!busy)openProject?.(p);}}
                   onKeyDown={(event) => {
                     if (event.target !== event.currentTarget) return;
                     if (event.key === "Enter" || event.key === " ") {
@@ -1622,6 +1639,7 @@ function Kanban({
                   <ProjectLabels labels={p.labels} />
                   <h3>{p.name}</h3>
                   <p>{p.demand}</p>
+                  {moveStatus&&<label className="kanban-move-control" onClick={e=>e.stopPropagation()} onDragStart={e=>{e.preventDefault();e.stopPropagation();}}>Mover para<select aria-label={"Mover "+ticket(p.ticket)+" para"} value={p.status} disabled={busy} onChange={e=>void move(p.id,e.target.value as Status)}>{statuses.map(s=><option key={s}>{s}</option>)}</select></label>}
                   <footer>
                     <small>{slaInfo(p).label}</small>
                     <i>{initials(p.owner)}</i>
@@ -1631,7 +1649,7 @@ function Kanban({
           </div>
         </section>
       ))}
-    </div>
+    </div></>
   );
 }
 function TicketCards({
