@@ -1876,6 +1876,25 @@ function ProjectDetail({
     }
   }
 
+  function renderQuickEditor() { return (<div className="quick-ticket-editor">
+                <header>
+                  <b>{quickEdit === "priority" ? "Editar prioridade" : "Editar status"}</b>
+                  <button onClick={() => setQuickEdit(null)} aria-label="Fechar edição"><X /></button>
+                </header>
+                  {quickEdit === "priority" ? <label>Prioridade<select value={quickPriority} onChange={e=>setQuickPriority(e.target.value as Priority)}>{["Baixa","Média","Alta"].map(v=><option key={v}>{v}</option>)}</select></label> : <label>Status
+                    <select value={quickStatus} onChange={(event) => setQuickStatus(event.target.value as Status)}>
+                      {statuses.map((status) => <option key={status}>{status}</option>)}
+                    </select>
+                  </label>}
+                <label>Justificativa da alteração
+                  <textarea value={quickJustification} onChange={(event) => setQuickJustification(event.target.value)} placeholder="Explique por que este dado foi alterado" />
+                </label>
+                {quickError && <small className="quick-edit-error">{quickError}</small>}
+                <button className="quick-edit-save" disabled={quickBusy} onClick={saveQuickEdit}>
+                  {quickBusy ? <Loader2 /> : null} Salvar alteração
+                </button>
+              </div>); }
+
   function renderSection(section: FieldSection) {
     const show = (key: string) => fields.some(f => f.key === key && f.visible && fieldSection(f) === section);
     return <div className="ticket-configured-fields">
@@ -1923,30 +1942,11 @@ function ProjectDetail({
                 )}
                 {quickEdit === "sei" && quickError && <small className="quick-edit-error" role="alert">{quickError}</small>}
               </article>}
-      {(show("status") || show("priority")) && <>{(quickEdit === "status" || quickEdit === "priority") && (
-              <div className="quick-ticket-editor">
-                <header>
-                  <b>{quickEdit === "priority" ? "Editar prioridade" : "Editar status"}</b>
-                  <button onClick={() => setQuickEdit(null)} aria-label="Fechar edição"><X /></button>
-                </header>
-                  {quickEdit === "priority" ? <label>Prioridade<select value={quickPriority} onChange={e=>setQuickPriority(e.target.value as Priority)}>{["Baixa","Média","Alta"].map(v=><option key={v}>{v}</option>)}</select></label> : <label>Status
-                    <select value={quickStatus} onChange={(event) => setQuickStatus(event.target.value as Status)}>
-                      {statuses.map((status) => <option key={status}>{status}</option>)}
-                    </select>
-                  </label>}
-                <label>Justificativa da alteração
-                  <textarea value={quickJustification} onChange={(event) => setQuickJustification(event.target.value)} placeholder="Explique por que este dado foi alterado" />
-                </label>
-                {quickError && <small className="quick-edit-error">{quickError}</small>}
-                <button className="quick-edit-save" disabled={quickBusy} onClick={saveQuickEdit}>
-                  {quickBusy ? <Loader2 /> : null} Salvar alteração
-                </button>
-              </div>
-            )}</>}
+      {show("status") && quickEdit === "status" && renderQuickEditor()}
       {show("openedAt") && (
                 <div><b>{label("openedAt", "Data de abertura")}</b><span>{new Date(project.openedAt + "T12:00:00").toLocaleDateString("pt-BR")}</span></div>
               )}
-              {show("priority") && <div><b>{label("priority", "Prioridade")}</b><button className="ticket-assign-trigger" onClick={()=>{setQuickPriority(project.priority);setQuickSei(project.sei);setQuickOwnerId(project.ownerId);setQuickJustification("");setQuickError("");setQuickEdit("priority");}}>{project.priority}<Pencil/></button></div>}
+
       {fields.filter(f => f.visible && fieldSection(f) === section && ["stage", "ownerId"].includes(f.key)).map(f => <article key={f.id}><b>{f.label}</b><span>{f.key === "stage" ? (currentStep?.stageName || project.stage || "—") : project.owner || "Não informado"}</span>{f.key === "ownerId" && !["Concluído","Cancelado"].includes(project.status) && <button className="ticket-assign-trigger" onClick={()=>{setAssignee(project.ownerId);setAssignReason("");setAssignError("");setAssigning(true);}}><Users/>Atribuir</button>}</article>)}
       {custom.filter(item => fieldSection(item.field) === section).map(item => <article key={item.field.id}><b>{item.field.label}</b><span>{item.value || "—"}</span></article>)}
     </div>;
@@ -1967,7 +1967,7 @@ function ProjectDetail({
 
           </div>
           <h2 className="ticket-hero-title">{project.name}</h2>
-          <div className="ticket-hero-meta"><span><small>Projeto</small>{project.name}</span><span><small>Demanda</small>{project.demand}</span>{show("sei")&&<span><small>Nº do SEI</small>{project.sei||"Não informado"}</span>}{show("status")&&<span><small>Status do projeto</small><b className={"pill "+statusConfig[project.status].className}>{project.status}</b></span>}{show("priority")&&<span><small>Prioridade</small>{project.priority}</span>}{show("labels") && (
+          <div className="ticket-hero-meta"><span><small>Projeto</small>{project.name}</span><span><small>Demanda</small>{project.demand}</span>{show("sei")&&<span><small>Nº do SEI</small>{project.sei||"Não informado"}</span>}{show("status")&&<span><small>Status do projeto</small><b className={"pill "+statusConfig[project.status].className}>{project.status}</b></span>}{show("priority")&&<div className="ticket-top-priority"><small>{label("priority", "Prioridade")}</small><button className="ticket-assign-trigger" aria-label="Editar prioridade" aria-expanded={quickEdit === "priority"} onClick={()=>{setQuickPriority(project.priority);setQuickSei(project.sei);setQuickOwnerId(project.ownerId);setQuickJustification("");setQuickError("");setQuickEdit("priority");}}>{project.priority}<Pencil/></button>{quickEdit === "priority" && renderQuickEditor()}</div>}{show("labels") && (
               <div className="header-label-control ticket-top-labels">
                 <button
                   className="header-label-trigger"
