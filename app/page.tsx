@@ -1947,8 +1947,28 @@ function ProjectDetail({
                 <div><b>{label("openedAt", "Data de abertura")}</b><span>{new Date(project.openedAt + "T12:00:00").toLocaleDateString("pt-BR")}</span></div>
               )}
               {show("priority") && <div><b>{label("priority", "Prioridade")}</b><button className="ticket-assign-trigger" onClick={()=>{setQuickPriority(project.priority);setQuickSei(project.sei);setQuickOwnerId(project.ownerId);setQuickJustification("");setQuickError("");setQuickEdit("priority");}}>{project.priority}<Pencil/></button></div>}
-      {show("labels") && (
-              <div className="header-label-control">
+      {fields.filter(f => f.visible && fieldSection(f) === section && ["stage", "ownerId"].includes(f.key)).map(f => <article key={f.id}><b>{f.label}</b><span>{f.key === "stage" ? (currentStep?.stageName || project.stage || "—") : project.owner || "Não informado"}</span>{f.key === "ownerId" && !["Concluído","Cancelado"].includes(project.status) && <button className="ticket-assign-trigger" onClick={()=>{setAssignee(project.ownerId);setAssignReason("");setAssignError("");setAssigning(true);}}><Users/>Atribuir</button>}</article>)}
+      {custom.filter(item => fieldSection(item.field) === section).map(item => <article key={item.field.id}><b>{item.field.label}</b><span>{item.value || "—"}</span></article>)}
+    </div>;
+  }
+
+  return (
+    <>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="process-dialog ticket-redesign">
+        <DialogHeader className="process-header">
+          <DialogTitle className="sr-only">Processo {ticket(project.ticket)}</DialogTitle>
+          <DialogDescription className="sr-only">Detalhes, prazos e histórico do processo.</DialogDescription>
+          <div className="process-header-start">
+            <ExportTicketsButton projects={[project]} fields={fields} />
+            <div className="process-kicker">
+              <span>{ticket(project.ticket)}</span>
+            </div>
+
+          </div>
+          <h2 className="ticket-hero-title">{project.name}</h2>
+          <div className="ticket-hero-meta"><span><small>Projeto</small>{project.name}</span><span><small>Demanda</small>{project.demand}</span>{show("sei")&&<span><small>Nº do SEI</small>{project.sei||"Não informado"}</span>}{show("status")&&<span><small>Status do projeto</small><b className={"pill "+statusConfig[project.status].className}>{project.status}</b></span>}{show("priority")&&<span><small>Prioridade</small>{project.priority}</span>}{show("labels") && (
+              <div className="header-label-control ticket-top-labels">
                 <button
                   className="header-label-trigger"
                   onClick={() => setLabelProject(labelProject === project.id ? "" : project.id)}
@@ -1956,6 +1976,7 @@ function ProjectDetail({
                 >
                   <Tag /> {label("labels", "Etiquetas")}
                 </button>
+                <div className="ticket-top-label-chips">{project.labels.map(item => <em key={item.id}>{item.label_text}</em>)}</div>
                 {labelProject === project.id && (
                   <div className="header-label-popover">
                     <b>Etiquetas do ticket</b>
@@ -1989,28 +2010,7 @@ function ProjectDetail({
                   </div>
                 )}
               </div>
-            )}
-      {fields.filter(f => f.visible && fieldSection(f) === section && ["stage", "ownerId"].includes(f.key)).map(f => <article key={f.id}><b>{f.label}</b><span>{f.key === "stage" ? (currentStep?.stageName || project.stage || "—") : project.owner || "Não informado"}</span>{f.key === "ownerId" && !["Concluído","Cancelado"].includes(project.status) && <button className="ticket-assign-trigger" onClick={()=>{setAssignee(project.ownerId);setAssignReason("");setAssignError("");setAssigning(true);}}><Users/>Atribuir</button>}</article>)}
-      {custom.filter(item => fieldSection(item.field) === section).map(item => <article key={item.field.id}><b>{item.field.label}</b><span>{item.value || "—"}</span></article>)}
-    </div>;
-  }
-
-  return (
-    <>
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="process-dialog ticket-redesign">
-        <DialogHeader className="process-header">
-          <DialogTitle className="sr-only">Processo {ticket(project.ticket)}</DialogTitle>
-          <DialogDescription className="sr-only">Detalhes, prazos e histórico do processo.</DialogDescription>
-          <div className="process-header-start">
-            <ExportTicketsButton projects={[project]} fields={fields} />
-            <div className="process-kicker">
-              <span>{ticket(project.ticket)}</span>
-            </div>
-
-          </div>
-          <h2 className="ticket-hero-title">{project.name}</h2>
-          <div className="ticket-hero-meta"><span><small>Projeto</small>{project.name}</span><span><small>Demanda</small>{project.demand}</span>{show("sei")&&<span><small>Nº do SEI</small>{project.sei||"Não informado"}</span>}{show("status")&&<span><small>Status do projeto</small><b className={"pill "+statusConfig[project.status].className}>{project.status}</b></span>}{show("priority")&&<span><small>Prioridade</small>{project.priority}</span>}{show("labels")&&<span><small>Etiquetas</small>{project.labels.map(l=><em key={l.id}>{l.label_text}</em>)}</span>}</div>
+            )}</div>
         </DialogHeader>
 
         <div className="process-layout process-three-columns">
