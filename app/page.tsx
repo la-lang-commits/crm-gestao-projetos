@@ -1405,41 +1405,33 @@ function ExportTicketsButton({projects,fields}: {projects:Project[];fields:Field
  };
  return <div className="ticket-export"><button type="button" onClick={download} disabled={busy || !projects.length}>{busy ? <Loader2 className="spin"/> : <Download/>}{busy ? 'Gerando Excel...' : 'Baixar Excel'}</button>{error && <small role="alert">{error}</small>}</div>;
 }
-function ProjectsView(
-  props: ListProps & {
-    mode: "list" | "kanban";
-    setMode: (m: "list" | "kanban") => void;
-  },
-) {
-  const { mode, setMode, ...rest } = props;
-  return (
-    <section className="recent full projects-surface">
-      <header>
-        <div>
-          <h2>Projetos</h2>
-          <p>Alterne entre a visão detalhada e o fluxo por status.</p>
-        </div>
-        <ExportTicketsButton projects={props.projects} fields={props.fields} />
-        <div className="view-switch">
-          <button
-            className={mode === "list" ? "active" : ""}
-            onClick={() => setMode("list")}
-          >
-            <List />
-            Lista
-          </button>
-          <button
-            className={mode === "kanban" ? "active" : ""}
-            onClick={() => setMode("kanban")}
-          >
-            <Columns3 />
-            Kanban
-          </button>
-        </div>
-      </header>
-      {mode === "list" ? <ProjectTable {...rest} /> : <Kanban {...rest} />}
-    </section>
-  );
+function projectStageDeadline(project: Project) {
+  if (["Concluído","Cancelado"].includes(project.status)) return {tone:"neutral",label:project.status,title:project.status};
+  const step=project.workflow.find(item=>item.status==="current");
+  const info=deadlineInfo(step?.dueAt || null,step?.slaUnit || project.slaUnit);
+  return {...info,title:info.tone==="late"?"Atrasada":info.tone==="warning"?"Em atenção":info.tone==="ok"?"No prazo":"Não iniciada"};
+}
+function ProjectsView(props: ListProps & {mode:"list"|"kanban";setMode:(m:"list"|"kanban")=>void}) {
+  const {mode,setMode,...rest}=props;
+  const [query,setQuery]=useState(""),[status,setStatus]=useState(""),[owner,setOwner]=useState(""),[priority,setPriority]=useState(""),[more,setMore]=useState(false),[demand,setDemand]=useState(""),[sla,setSla]=useState("");
+  const normalize=(v:string)=>v.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+  const filtered=props.projects.filter(p=>(!query||normalize([p.name,p.demand,p.sei,ticket(p.ticket)].join(" ")).includes(normalize(query)))&&(!status||p.status===status)&&(!owner||p.ownerId===owner)&&(!priority||p.priority===priority)&&(!demand||p.demand===demand)&&(!sla||projectStageDeadline(p).tone===sla));
+  const groups=Array.from(new Set(props.projects.map(p=>p.name.trim().toLowerCase()))).map(name=>props.projects.filter(p=>p.name.trim().toLowerCase()===name));
+  const metrics=[{label:"Total de projetos",value:groups.length,Icon:FolderKanban,tone:"blue"},{label:"Em andamento",value:groups.filter(g=>g.some(p=>p.status==="Em andamento")).length,Icon:Activity,tone:"green"},{label:"Concluídos",value:groups.filter(g=>g.every(p=>p.status==="Concluído")).length,Icon:CheckCircle2,tone:"green"},{label:"Atrasados",value:groups.filter(g=>g.some(p=>slaInfo(p).tone==="late")).length,Icon:Clock3,tone:"red"},{label:"Total de tickets",value:props.projects.length,Icon:ListChecks,tone:"gold"}];
+  const owners=Array.from(new Map(props.projects.map(p=>[p.ownerId,p.owner])).entries());
+  return <section className="projects-reference">
+    <div className="projects-metrics">{metrics.map(({label,value,Icon,tone})=><article key={label} className={tone}><Icon/><div><small>{label}</small><b>{value}</b></div></article>)}</div>
+    <div className="projects-toolbar">
+      <label className="projects-search"><Search/><input aria-label="Buscar projeto ou ticket" placeholder="Buscar projeto ou ticket..." value={query} onChange={e=>setQuery(e.target.value)}/></label>
+      <label>Status<select value={status} onChange={e=>setStatus(e.target.value)}><option value="">Todos</option>{statuses.map(v=><option key={v}>{v}</option>)}</select></label>
+      <label>Responsável<select value={owner} onChange={e=>setOwner(e.target.value)}><option value="">Todos</option>{owners.map(([id,name])=><option key={id} value={id}>{name||"Sem responsável"}</option>)}</select></label>
+      <label>Prioridade<select value={priority} onChange={e=>setPriority(e.target.value)}><option value="">Todas</option>{["Alta","Média","Baixa"].map(v=><option key={v}>{v}</option>)}</select></label>
+      <button className="projects-filter-toggle" aria-expanded={more} onClick={()=>setMore(!more)}>Mais filtros</button>
+      <div className="view-switch"><button className={mode==="list"?"active":""} onClick={()=>setMode("list")}><List/>Lista</button><button className={mode==="kanban"?"active":""} onClick={()=>setMode("kanban")}><Columns3/>Kanban</button></div>
+    </div>
+    {more&&<div className="projects-extra-filters"><label>Demanda<select value={demand} onChange={e=>setDemand(e.target.value)}><option value="">Todas</option>{Array.from(new Set(props.projects.map(p=>p.demand))).map(v=><option key={v}>{v}</option>)}</select></label><label>Situação da etapa<select value={sla} onChange={e=>setSla(e.target.value)}><option value="">Todas</option><option value="ok">No prazo</option><option value="warning">Em atenção</option><option value="late">Atrasada</option><option value="neutral">Sem prazo ativo</option></select></label><button onClick={()=>{setQuery("");setStatus("");setOwner("");setPriority("");setDemand("");setSla("");}}>Limpar filtros</button><ExportTicketsButton projects={filtered} fields={props.fields}/></div>}
+    <div className="projects-surface projects-reference-table">{mode==="list"?<ProjectTable {...rest} projects={filtered}/>:<Kanban {...rest} projects={filtered}/>}</div>
+  </section>;
 }
 
 function ProjectTable({
@@ -1448,22 +1440,21 @@ function ProjectTable({
   requestDelete,
   canDelete,
 }: ListProps) {
+  const [page,setPage]=useState(1);
+  const pageCount=Math.max(1,Math.ceil(projects.length/10));
+  const currentPage=Math.min(page,pageCount);
+  useEffect(()=>setPage(1),[projects]);
+  const visible=projects.slice((currentPage-1)*10,currentPage*10);
   return (
     <div className="project-table-wrap">
       <div className="project-table">
         <div className="project-table-head">
-          <span>Projeto</span>
-          <span>Etapas</span>
-          <span>Status</span>
-          <span>Última atualização</span>
-          <span>Responsável</span>
-          <span>Prioridade</span>
-          <span aria-label="Excluir projeto" title="Excluir projeto">
-            <Trash2 />
-          </span>
+          <span>Projeto / Ticket</span><span>Etapas</span><span>Demanda</span><span>Status do projeto</span><span>Situação da etapa (SLA)</span><span>Responsável</span><span>Última atualização</span><span>Prioridade</span><span>Ações</span>
         </div>
         {projects.length ? (
-          projects.map((project) => {
+          visible.map((project) => {
+            const deadline=projectStageDeadline(project);
+            const days=Math.max(0,Math.floor((Date.now()-new Date(project.updatedAt).getTime())/86400000));
             const flow = project.workflow.length
               ? [...project.workflow].sort((a,b)=>a.order-b.order)
               : stages.map((stageName, order) => ({
@@ -1509,48 +1500,34 @@ function ProjectTable({
                     </div>
                   ))}
                 </div>
+                <div><span className="project-demand-pill">{project.demand}</span></div>
                 <div className="table-status">
                   <span className={`pill ${statusConfig[project.status].className}`}>
                     {project.status}
                   </span>
-                  <small>{timeInCurrentStep(project)}</small>
+
                 </div>
-                <time>
-                  {new Date(project.updatedAt).toLocaleDateString("pt-BR")}
-                </time>
+                <div className={"project-stage-deadline "+deadline.tone}><b>{deadline.title}</b><small>{deadline.label}</small></div>
                 <div className="table-owner">
                   <i>{initials(project.owner)}</i>
                   <span>{project.owner}</span>
                 </div>
+                <time dateTime={project.updatedAt}>{new Date(project.updatedAt).toLocaleDateString("pt-BR")}<small>{days===0?"Hoje":days===1?"há 1 dia":"há "+days+" dias"}</small></time>
                 <span className={`priority-pill ${project.priority.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")}`}>
                   {project.priority}
                 </span>
-                {canDelete ? (
-                  <button
-                    className="table-more project-delete"
-                    title="Excluir projeto"
-                    aria-label={`Excluir projeto ${project.name}`}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      requestDelete?.(project);
-                    }}
-                  >
-                    <Trash2 />
-                  </button>
-                ) : (
-                  <span aria-hidden="true" />
-                )}
+                <details className="project-row-actions" onClick={e=>e.stopPropagation()}><summary aria-label={"Ações do ticket "+ticket(project.ticket)}>⋮</summary><div><button onClick={()=>openProject?.(project)}>Abrir ticket</button>{canDelete&&<button onClick={()=>requestDelete?.(project)}><Trash2/>Excluir</button>}</div></details>
               </article>
             );
           })
         ) : (
-          <div className="empty-projects">Nenhum projeto nesta área.</div>
+          <div className="empty-projects">Nenhum ticket encontrado para os filtros selecionados.</div>
         )}
       </div>
       {projects.length > 0 && (
         <footer className="project-table-footer">
-          <span>Mostrando {projects.length} {projects.length === 1 ? "projeto" : "projetos"}</span>
-          <div><button disabled>‹</button><b>1</b><button disabled>›</button></div>
+          <span>Mostrando {visible.length} de {projects.length} tickets</span>
+          <div><button aria-label="Página anterior" disabled={currentPage===1} onClick={()=>setPage(currentPage-1)}>‹</button><b>{currentPage}</b><button aria-label="Próxima página" disabled={currentPage===pageCount} onClick={()=>setPage(currentPage+1)}>›</button></div>
         </footer>
       )}
     </div>
