@@ -58,6 +58,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { OverviewDashboard } from "@/components/overview-dashboard";
+import {MyActions} from "@/components/my-actions";
+import {TicketCollaboration,type TicketCollaborator} from "@/components/ticket-collaboration";
 import { TicketFlow } from "@/components/ticket-flow";
 import "@/components/ticket-redesign.css";
 import { HelpCenter } from "@/components/help-center";
@@ -159,6 +161,7 @@ type FieldDef = {
   order: number;
 };
 type Project = {
+  team: TicketCollaborator[];
   id: string;
   catalogId: string;
   ticket: number;
@@ -500,7 +503,7 @@ function Workspace({ user }: { user: any }) {
       supabase
         .from("projects")
         .select(
-          "id,catalog_id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,updated_at,sla_days,sla_value,sla_unit,sla_due_at,has_delayed_step,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),workflow:project_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,status,started_at,due_at,completed_at,completed_late,assignee:profiles!project_workflow_steps_assignee_id_fkey(full_name)),labels:project_labels(id,label_text,color),attachments:project_attachments(id,storage_path,file_name,mime_type,size_bytes,uploaded_by,created_at,uploader:profiles!project_attachments_uploaded_by_fkey(full_name)),events:project_events(id,event_type,justification,created_at,actor_user_id,from_stage,to_stage,to_status,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),from_owner:profiles!project_events_from_owner_id_fkey(full_name),to_owner:profiles!project_events_to_owner_id_fkey(full_name)),custom_values:project_field_values(field_id,value)",
+          "id,catalog_id,ticket_number,sei_number,name,demand,status,priority,progress,opened_at,updated_at,sla_days,sla_value,sla_unit,sla_due_at,has_delayed_step,stage,observation,group_id,owner_id,owner:profiles!projects_owner_id_fkey(full_name),workflow:project_workflow_steps(id,step_order,stage_name,assignee_id,sla_value,sla_unit,status,started_at,due_at,completed_at,completed_late,assignee:profiles!project_workflow_steps_assignee_id_fkey(full_name)),team:ticket_collaborators(user_id,role,person:profiles!ticket_collaborators_user_id_fkey(full_name)),labels:project_labels(id,label_text,color),attachments:project_attachments(id,storage_path,file_name,mime_type,size_bytes,uploaded_by,created_at,uploader:profiles!project_attachments_uploaded_by_fkey(full_name)),events:project_events(id,event_type,justification,created_at,actor_user_id,from_stage,to_stage,to_status,actor:profiles!project_events_actor_user_id_fkey(full_name),subject:profiles!project_events_subject_user_id_fkey(full_name),from_owner:profiles!project_events_from_owner_id_fkey(full_name),to_owner:profiles!project_events_to_owner_id_fkey(full_name)),custom_values:project_field_values(field_id,value)",
         )
         .order("updated_at", { ascending: false }),
       supabase
@@ -609,6 +612,7 @@ function Workspace({ user }: { user: any }) {
     else {
       const mappedProjects: Project[] = (jr.data || []).map((p: any) => ({
           id: p.id,
+          team:(p.team||[]).map((m:any)=>({userId:m.user_id,name:m.person?.full_name||"Usuário",role:m.role})),
           catalogId: p.catalog_id || "",
           ticket: Number(p.ticket_number),
           sei: p.sei_number || "",
@@ -943,6 +947,7 @@ function Workspace({ user }: { user: any }) {
             active={view === "Projetos"}
             click={() => setView("Projetos")}
           />
+          <Nav icon={<ListChecks />} label="Minhas ações" active={view === "Minhas ações"} click={()=>setView("Minhas ações")}/>
           <Nav icon={<List />} label="Tarefas" active={view === "Tarefas"} click={() => { setCalendarTaskId(""); setView("Tarefas"); }} />
           <Nav icon={<CalendarDays />} label="Cronograma" active={view === "Calendário"} click={() => setView("Calendário")} />
           <Nav icon={<CircleHelp />} label="Ajuda" active={view === "Ajuda"} click={() => setView("Ajuda")} />
@@ -1017,14 +1022,14 @@ function Workspace({ user }: { user: any }) {
               <h1>
                 {view === "Início"
                   ? "Olá, " + name.split(" ")[0] + "!"
-                  : view === "Ajuda" ? "Ajuda" : view === "Calendário" ? "Cronograma de projetos" : view === "Tarefas" ? "Tarefas" : view === "Configurações"
+                  : view === "Minhas ações" ? "Minhas ações" : view === "Ajuda" ? "Ajuda" : view === "Calendário" ? "Cronograma de projetos" : view === "Tarefas" ? "Tarefas" : view === "Configurações"
                     ? "Configurações"
                     : current?.name || "Sem área"}
               </h1>
               <span>
                 {view === "Início"
                   ? "Acompanhe prazos, etapas e movimentações da sua área."
-                  : view === "Ajuda" ? "Seu guia para usar cada parte do CRM." : view === "Calendário" ? "Acompanhe o andamento dos projetos por etapas, prazos e responsáveis." : view === "Tarefas" ? "Acompanhe suas atividades e as demandas da equipe." : view === "Configurações"
+                  : view === "Minhas ações" ? "Seus tickets, etapas e tarefas pendentes nesta área." : view === "Ajuda" ? "Seu guia para usar cada parte do CRM." : view === "Calendário" ? "Acompanhe o andamento dos projetos por etapas, prazos e responsáveis." : view === "Tarefas" ? "Acompanhe suas atividades e as demandas da equipe." : view === "Configurações"
                     ? "Defina o catálogo e os campos usados nos tickets desta área."
                     : projects.length +
                       " projetos visíveis somente para esta área."}
@@ -1084,6 +1089,8 @@ function Workspace({ user }: { user: any }) {
             </div>
           ) : view === "Início" ? (
             <OverviewDashboard key={areaId} tickets={projects.map(p=>({...p,sla:slaInfo(p)}))} catalog={areaCatalog} members={areaMembers} areas={areas} areaId={areaId} onAreaChange={setAreaId} openProjects={()=>setView("Projetos")} openTasks={()=>setView("Tarefas")} openTicket={id=>{const p=projects.find(p=>p.id===id);if(p)setDetailProject(p);}} />
+          ) : view === "Minhas ações" ? (
+            <MyActions key={areaId} areaId={areaId} userId={user.id} query={query} tickets={allProjects.filter(p=>p.areaId===areaId)} onTicket={id=>{const p=allProjects.find(p=>p.id===id);if(p)setDetailProject(p);}} onTask={id=>{setCalendarTaskId(id);setView("Tarefas");}}/>
           ) : view === "Tarefas" ? (
             <TasksBoard key={areaId} initialTaskId={calendarTaskId} areaId={areaId} userId={user.id} projects={allProjects.filter(p=>p.areaId===areaId)} members={scopedMembers} globalQuery={query} />
           ) : view === "Calendário" ? (
@@ -1146,6 +1153,7 @@ function Workspace({ user }: { user: any }) {
             event.eventType === "comentario" &&
             event.actorUserId === user.id
           }
+          refresh={()=>load(true)}
           assign={async (ownerId, reason) => { const {error}=await supabase.rpc("assign_ticket_owner",{p_project_id:detailProject.id,p_owner_id:ownerId,p_reason:reason});if(error)throw error;await load(true);setNotice("Responsável atualizado. A etapa e os prazos foram mantidos."); }}
           quickUpdate={async ({ status, sei, ownerId, priority, justification }) =>
             updateProject({
@@ -1392,7 +1400,7 @@ function ExportTicketsButton({projects,fields}: {projects:Project[];fields:Field
    const {createTicketWorkbook}=await import("@/lib/ticket-excel");
    const date=(value:string|null|undefined)=>value ? new Date(value.length===10 ? value+'T12:00:00' : value).toLocaleString('pt-BR',{timeZone:'America/Sao_Paulo',...(value.length===10 ? {year:'numeric',month:'2-digit',day:'2-digit'} as const : {})}) : '';
    const sheets=[
-    {name:'Tickets',headers:['Ticket','Projeto','Demanda','Nº do SEI','Status','Prioridade','Responsável atual','Etapa atual','Data de abertura','Última atualização','SLA total','Prazo previsto','Situação do SLA','Etiquetas'],rows:projects.map(p=>[ticket(p.ticket),p.name,p.demand,p.sei,p.status,p.priority,p.owner,p.stage,date(p.openedAt),date(p.updatedAt),formatSla(p.slaValue,p.slaUnit),date(p.slaDueAt),slaInfo(p).label,p.labels.map(l=>l.label_text).join('; ')])},
+    {name:'Tickets',headers:['Ticket','Projeto','Demanda','Nº do SEI','Status','Prioridade','Responsável atual','Etapa atual','Data de abertura','Última atualização','SLA total','Prazo previsto','Situação do SLA','Etiquetas','Responsáveis adicionais','Participantes'],rows:projects.map(p=>[ticket(p.ticket),p.name,p.demand,p.sei,p.status,p.priority,p.owner,p.stage,date(p.openedAt),date(p.updatedAt),formatSla(p.slaValue,p.slaUnit),date(p.slaDueAt),slaInfo(p).label,p.labels.map(l=>l.label_text).join('; '),(p.team||[]).filter(m=>m.role==='responsible').map(m=>m.name).join('; '),(p.team||[]).filter(m=>m.role==='participant').map(m=>m.name).join('; ')])},
     {name:'Etapas',headers:['Ticket','Projeto','Ordem','Etapa','Responsável','SLA','Início','Prazo previsto','Conclusão','Situação'],rows:projects.flatMap(p=>[...p.workflow].sort((a,b)=>a.order-b.order).map(w=>[ticket(p.ticket),p.name,w.order,w.stageName,w.assignee,formatSla(w.slaValue,w.slaUnit),date(w.startedAt),date(w.dueAt),date(w.completedAt),w.status==='completed' ? w.completedLate ? 'Concluída com atraso' : 'Concluída no prazo' : w.status==='current' ? 'Atual · '+deadlineInfo(w.dueAt,w.slaUnit).label : w.status==='skipped' ? 'Ignorada' : 'Não iniciada']))},
     {name:'Histórico e comentários',headers:['Ticket','Projeto','Data (Brasília)','Tipo','Autor','Referente a','Descrição','Etapa anterior','Etapa seguinte','Responsável anterior','Responsável seguinte'],rows:projects.flatMap(p=>[...p.events].sort((a,b)=>a.created_at.localeCompare(b.created_at)).map(e=>[ticket(p.ticket),p.name,date(e.created_at),e.eventType,e.actor?.full_name||'',e.subject?.full_name||'',e.justification,e.fromStage||'',e.toStage||'',e.fromOwner?.full_name||'',e.toOwner?.full_name||'']))},
     {name:'Campos adicionais',headers:['Ticket','Projeto','Campo','Valor'],rows:projects.flatMap(p=>fields.filter(f=>!f.system && f.areaId===p.areaId).map(f=>[ticket(p.ticket),p.name,f.label,p.customValues.find(v=>v.field_id===f.id)?.value||'']))},
@@ -1405,6 +1413,7 @@ function ExportTicketsButton({projects,fields}: {projects:Project[];fields:Field
  };
  return <div className="ticket-export"><button type="button" onClick={download} disabled={busy || !projects.length}>{busy ? <Loader2 className="spin"/> : <Download/>}{busy ? 'Gerando Excel...' : 'Baixar Excel'}</button>{error && <small role="alert">{error}</small>}</div>;
 }
+function responsibleNames(project: Project) { return [project.owner,...(project.team||[]).filter(m=>m.role==="responsible"&&m.userId!==project.ownerId).map(m=>m.name)].filter(Boolean).join(", "); }
 function projectStageDeadline(project: Project) {
   if (["Concluído","Cancelado"].includes(project.status)) return {tone:"neutral",label:project.status,title:project.status};
   const step=project.workflow.find(item=>item.status==="current");
@@ -1415,10 +1424,10 @@ function ProjectsView(props: ListProps & {mode:"list"|"kanban";setMode:(m:"list"
   const {mode,setMode,...rest}=props;
   const [query,setQuery]=useState(""),[status,setStatus]=useState(""),[owner,setOwner]=useState(""),[priority,setPriority]=useState(""),[more,setMore]=useState(false),[demand,setDemand]=useState(""),[sla,setSla]=useState("");
   const normalize=(v:string)=>v.normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
-  const filtered=props.projects.filter(p=>(!query||normalize([p.name,p.demand,p.sei,ticket(p.ticket)].join(" ")).includes(normalize(query)))&&(!status||p.status===status)&&(!owner||p.ownerId===owner)&&(!priority||p.priority===priority)&&(!demand||p.demand===demand)&&(!sla||projectStageDeadline(p).tone===sla));
+  const filtered=props.projects.filter(p=>(!query||normalize([p.name,p.demand,p.sei,ticket(p.ticket)].join(" ")).includes(normalize(query)))&&(!status||p.status===status)&&(!owner||p.ownerId===owner||p.team?.some(m=>m.userId===owner&&m.role==="responsible"))&&(!priority||p.priority===priority)&&(!demand||p.demand===demand)&&(!sla||projectStageDeadline(p).tone===sla));
   const groups=Array.from(new Set(props.projects.map(p=>p.name.trim().toLowerCase()))).map(name=>props.projects.filter(p=>p.name.trim().toLowerCase()===name));
   const metrics=[{label:"Total de projetos",value:groups.length,Icon:FolderKanban,tone:"blue"},{label:"Em andamento",value:groups.filter(g=>g.some(p=>p.status==="Em andamento")).length,Icon:Activity,tone:"green"},{label:"Concluídos",value:groups.filter(g=>g.every(p=>p.status==="Concluído")).length,Icon:CheckCircle2,tone:"green"},{label:"Atrasados",value:groups.filter(g=>g.some(p=>slaInfo(p).tone==="late")).length,Icon:Clock3,tone:"red"},{label:"Total de tickets",value:props.projects.length,Icon:ListChecks,tone:"gold"}];
-  const owners=Array.from(new Map(props.projects.map(p=>[p.ownerId,p.owner])).entries());
+  const owners=Array.from(new Map(props.projects.flatMap(p=>[[p.ownerId,p.owner] as const,...(p.team||[]).filter(m=>m.role==="responsible").map(m=>[m.userId,m.name] as const)])).entries());
   return <section className="projects-reference">
     <div className="projects-metrics">{metrics.map(({label,value,Icon,tone})=><article key={label} className={tone}><Icon/><div><small>{label}</small><b>{value}</b></div></article>)}</div>
     <div className="projects-toolbar">
@@ -1510,7 +1519,7 @@ function ProjectTable({
                 <div className={"project-stage-deadline "+deadline.tone}><b>{deadline.title}</b><small>{deadline.label}</small></div>
                 <div className="table-owner">
                   <i>{initials(project.owner)}</i>
-                  <span>{project.owner}</span>
+                  <span>{responsibleNames(project)}</span>
                 </div>
                 <time dateTime={project.updatedAt}>{new Date(project.updatedAt).toLocaleDateString("pt-BR")}<small>{days===0?"Hoje":days===1?"há 1 dia":"há "+days+" dias"}</small></time>
                 <span className={`priority-pill ${project.priority.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")}`}>
@@ -1753,6 +1762,7 @@ type ProjectDetailProps = {
   addComment: (id: string) => void;
   removeComment: (eventId: string) => Promise<void>;
   canDeleteComment: (event: Event) => boolean;
+  refresh:()=>Promise<void>;
   assign: (ownerId: string, reason: string) => Promise<void>;
   quickUpdate: (value: {
     status: Status;
@@ -1787,6 +1797,7 @@ function ProjectDetail({
   canDeleteComment,
   quickUpdate,
   assign,
+  refresh,
   uploadAttachment,
   downloadAttachment,
   removeAttachment,
@@ -1802,6 +1813,10 @@ function ProjectDetail({
   const currentStepLate = stepSla.tone === "late";
   const custom = fields.filter(field => !field.system && field.visible).map(field => ({ field, value: project.customValues.find(value => value.field_id === field.id)?.value || "" }));
   const [activityTab,setActivityTab]=useState("comments");
+  const [commentSearch,setCommentSearch]=useState(""),[commentAuthor,setCommentAuthor]=useState(""),[commentFrom,setCommentFrom]=useState(""),[commentTo,setCommentTo]=useState("");
+  const activityEvents=project.events.filter(e=>activityTab==="comments"?e.eventType==="comentario":e.eventType!=="comentario");
+  const shownEvents=activityTab==="history"?activityEvents:activityEvents.filter(e=>(!commentSearch||e.justification.toLocaleLowerCase("pt-BR").includes(commentSearch.toLocaleLowerCase("pt-BR")))&&(!commentAuthor||e.actorUserId===commentAuthor)&&(!commentFrom||new Date(e.created_at)>=new Date(commentFrom+"T00:00:00"))&&(!commentTo||new Date(e.created_at)<=new Date(commentTo+"T23:59:59.999")));
+
   const [assigning,setAssigning]=useState(false);
   const [assignee,setAssignee]=useState(project.ownerId);
   const [assignReason,setAssignReason]=useState("");
@@ -2015,6 +2030,7 @@ function ProjectDetail({
               <header>
                 <div><span className="division-number">2</span><div><b>Fluxo do projeto</b><small>Acompanhe o andamento e os responsáveis por cada etapa.</small></div></div><button className="ticket-assign-trigger" onClick={e=>e.currentTarget.closest(".process-layout")?.querySelector(".reference-sla")?.scrollIntoView({behavior:"smooth",block:"nearest"})}>Ver todas as etapas e prazos</button>
               </header>
+              <TicketCollaboration projectId={project.id} ownerId={project.ownerId} owner={project.owner} closed={["Concluído","Cancelado"].includes(project.status)} members={members} team={project.team||[]} onChanged={refresh}/>
               {renderSection("stage")}
               {(show("ownerId") || show("stage")) && <TicketFlow steps={project.workflow} showStages={show("stage")} showOwners={show("ownerId")} />}
             </section>
@@ -2110,9 +2126,10 @@ function ProjectDetail({
               />
               <button onClick={() => addComment(project.id)} disabled={(commentDrafts[project.id]?.trim().length || 0) < 3}><Send />Comentar</button>
             </div>
-            {(activityTab === "comments" ? project.events.filter(e=>e.eventType==="comentario") : project.events.filter(e=>e.eventType!=="comentario")).length ? (
+            {activityTab==="comments"&&<><div className="ticket-comment-filters"><input aria-label="Buscar nos comentários" placeholder="Buscar nos comentários..." value={commentSearch} onChange={e=>setCommentSearch(e.target.value)}/><label>Autor<select value={commentAuthor} onChange={e=>setCommentAuthor(e.target.value)}><option value="">Todos</option>{Array.from(new Map(project.events.filter(e=>e.eventType==="comentario").map(e=>[e.actorUserId,e.actor?.full_name||"Usuário"]))).map(([id,name])=><option key={id} value={id}>{name}</option>)}</select></label><button onClick={()=>{setCommentSearch("");setCommentAuthor("");setCommentFrom("");setCommentTo("");}}>Limpar filtros</button><label>De<input type="date" value={commentFrom} onChange={e=>setCommentFrom(e.target.value)}/></label><label>Até<input type="date" min={commentFrom} value={commentTo} onChange={e=>setCommentTo(e.target.value)}/></label></div><p className="ticket-comment-count">{shownEvents.length} comentários encontrados</p></>}
+            {shownEvents.length ? (
               <div className="activity-list">
-                {project.events.filter(e=>activityTab === "comments" ? e.eventType==="comentario" : e.eventType!=="comentario").map((event) => (
+                {shownEvents.map((event) => (
                   <article className="activity-item" key={event.id}>
                     <i>{event.eventType === "comentario" ? <MessageCircle /> : <Activity />}</i>
                     <div>
@@ -2144,7 +2161,7 @@ function ProjectDetail({
                 ))}
               </div>
             ) : (
-              <p className="activity-empty">O histórico começa com o primeiro comentário ou alteração.</p>
+              <p className="activity-empty">Nenhum registro encontrado.</p>
             )}
           </aside>
         </div>

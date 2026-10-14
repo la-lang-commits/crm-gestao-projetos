@@ -17,7 +17,14 @@ const sections=[
  ['Como ler o gráfico de SLA?','No prazo, Em atenção e Atrasadas agrupam as demandas ativas pela situação de prazo. Quando necessário, aparece Sem prazo. Demandas concluídas e canceladas ficam fora desse gráfico.'],
  ['O que é a carga por responsável?','As barras somam os tickets e as tarefas atribuídos a cada pessoa. As cores distinguem demandas e tarefas. Uma demanda é contada pelo responsável atual, sem somar todos os responsáveis que já passaram por ela. Sem responsável reúne atividades ainda sem atribuição.']
  ]},
+ {name:'Minhas ações',view:'Minhas ações',items:[
+ ['O que encontro em Minhas ações?','Tickets em aberto sob sua responsabilidade, incluindo os que têm você como responsável adicional, suas etapas atuais ou futuras e suas tarefas pendentes. Os itens respeitam a área selecionada. Clique em um item para abri-lo. Participar de um ticket não significa ser responsável por ele.']
+ ]},
  {name:'Projetos e tickets',view:'Projetos',items:[
+ ['Como adicionar uma etapa a um ticket aberto?','No Fluxo do projeto, clique em Adicionar etapa, preencha o nome, responsável e prazo. A etapa entra no fim da sequência deste ticket, sem alterar o modelo do catálogo nem os prazos existentes. Se não houver etapa ativa ou pendente, a nova etapa começa imediatamente.'],
+ ['Como escolher vários responsáveis e participantes?','Use Gerenciar equipe dentro do ticket. Para cada pessoa da área, escolha Responsável adicional ou Participante. O responsável da etapa segue o fluxo automático. Os responsáveis adicionais acompanham o ticket inteiro e recebem o item em Minhas ações. Informe o motivo e salve; a alteração fica no histórico.'],
+ ['Como filtrar comentários?','Na aba Comentários, use a busca por texto, o autor e as datas De e Até. Limpar filtros volta a mostrar todos os comentários. Esses filtros não alteram o histórico de movimentações.'],
+
  ['Como abrir um ticket?','Na página Projetos, clique em Novo projeto. Selecione o projeto e a demanda cadastrados, preencha os campos solicitados e salve. O ticket passa a aparecer na lista e no Kanban da área. Os campos marcados como obrigatórios precisam estar preenchidos.'],
  ['Como o SEI é preenchido?','Cadastre o número de SEI no projeto em Configurações. As demandas desse projeto herdam esse número para a abertura de novos tickets. Projetos sem SEI podem ser cadastrados. Alterar o SEI do cadastro não substitui automaticamente o número já salvo em tickets antigos.'],
  ['Como arrastar tickets no Kanban?','Segure o ticket e arraste até a coluna desejada. Ao soltar, o status é salvo e a mudança fica registrada no histórico. Você também pode usar Mover para no cartão, inclusive no celular ou pelo teclado. Essa ação muda o status geral; para avançar uma etapa e passar ao próximo responsável, use Encaminhar dentro do ticket.'],
