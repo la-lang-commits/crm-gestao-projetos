@@ -1,0 +1,9 @@
+"use client";
+import {useEffect,useState} from "react";
+import {supabase} from "@/lib/supabase";
+type Row={id:string;title:string;assignee_id:string|null;due_date:string|null;status:string;priority:string};
+export function TicketTaskPreview({projectId,members,onOpen,onAll}:{projectId:string;members:{id:string;name:string}[];onOpen:(id:string)=>void;onAll:()=>void}){
+ const [rows,setRows]=useState<Row[]>([]),[loading,setLoading]=useState(true),[error,setError]=useState(""),[retry,setRetry]=useState(0);
+ useEffect(()=>{let live=true;setLoading(true);setError("");void supabase.from("tasks").select("id,title,assignee_id,due_date,status,priority").eq("project_id",projectId).order("due_date",{ascending:true,nullsFirst:false}).limit(5).then(({data,error})=>{if(live){if(error)setError("Não foi possível carregar as tarefas.");else setRows(data||[]);setLoading(false);}});return()=>{live=false;};},[projectId,retry]);
+ return <section className="ticket-task-preview"><header><h3>Tarefas vinculadas</h3><button onClick={onAll}>Ver todas</button></header>{loading?<p>Carregando tarefas...</p>:error?<p role="alert">{error}<button onClick={()=>setRetry(v=>v+1)}>Tentar novamente</button></p>:rows.length?<div className="ticket-task-scroll"><table><thead><tr><th>Tarefa</th><th>Responsável</th><th>Prazo</th><th>Situação</th><th>Prioridade</th></tr></thead><tbody>{rows.map(t=><tr key={t.id}><td><button onClick={()=>onOpen(t.id)}>{t.title}</button></td><td>{members.find(m=>m.id===t.assignee_id)?.name||"Sem responsável"}</td><td>{t.due_date?t.due_date.split("-").reverse().join("/"):"—"}</td><td>{t.status}</td><td>{t.priority}</td></tr>)}</tbody></table></div>:<p>Nenhuma tarefa vinculada a este ticket.</p>}</section>;
+}

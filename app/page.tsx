@@ -59,6 +59,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { OverviewDashboard } from "@/components/overview-dashboard";
 import {MyActions} from "@/components/my-actions";
+import {TicketTaskPreview} from "@/components/ticket-task-preview";
+import "@/components/ticket-workspace.css";
 import {TicketCollaboration,type TicketCollaborator} from "@/components/ticket-collaboration";
 import { TicketFlow } from "@/components/ticket-flow";
 import "@/components/ticket-redesign.css";
@@ -465,6 +467,7 @@ function Workspace({ user }: { user: any }) {
     [mobile, setMobile] = useState(false),
     [newOpen, setNewOpen] = useState(false),
     [editProject, setEditProject] = useState<Project | null>(null),
+    [editingDetails,setEditingDetails]=useState(false),
     [detailProject, setDetailProject] = useState<Project | null>(null),
     [deleteProject, setDeleteProject] = useState<Project | null>(null),
     [deletingProject, setDeletingProject] = useState(false),
@@ -775,7 +778,7 @@ function Workspace({ user }: { user: any }) {
         ? "Etapa concluída e projeto encaminhado para o próximo responsável."
         : "Projeto atualizado com justificativa registrada.",
     );
-    await load();
+    await load(true);
   }
   async function removeProject(project: Project) {
     setDeletingProject(true);
@@ -1111,7 +1114,7 @@ function Workspace({ user }: { user: any }) {
       </main>
       {editProject && (
         <EditProject
-          advanceOnly
+          advanceOnly={!editingDetails}
           project={editProject}
           members={areaMembers}
           catalog={areaCatalog}
@@ -1135,10 +1138,9 @@ function Workspace({ user }: { user: any }) {
               setLabelText("");
             }
           }}
-          edit={(project) => {
-            setDetailProject(null);
-            setEditProject(project);
-          }}
+          userId={user.id}
+          editDetails={project=>{setEditingDetails(true);setEditProject(project);}}
+          edit={(project) => {setEditingDetails(false);setEditProject(project);}}
           labelProject={labelProject}
           setLabelProject={setLabelProject}
           labelText={labelText}
@@ -1743,6 +1745,8 @@ function TicketCards({
 }
 
 type ProjectDetailProps = {
+  userId:string;
+  editDetails:(project:Project)=>void;
   project: Project;
   fields: FieldDef[];
   members: Member[];
@@ -1778,6 +1782,8 @@ type ProjectDetailProps = {
 };
 
 function ProjectDetail({
+  userId,
+  editDetails,
   project,
   fields,
   members,
@@ -1812,6 +1818,11 @@ function ProjectDetail({
     : { label: "Sem etapa ativa", tone: "neutral" };
   const currentStepLate = stepSla.tone === "late";
   const custom = fields.filter(field => !field.system && field.visible).map(field => ({ field, value: project.customValues.find(value => value.field_id === field.id)?.value || "" }));
+  const [ticketTab,setTicketTab]=useState("overview");
+  const [teamRequest,setTeamRequest]=useState<{kind:"team"|"step";seq:number}>({kind:"team",seq:0});
+  const [taskSession,setTaskSession]=useState({id:"",create:false,seq:0});
+  const requestTeam=(kind:"team"|"step")=>setTeamRequest(v=>({kind,seq:v.seq+1}));
+  const openTasks=(id="",create=false)=>{setTaskSession(v=>({id,create,seq:v.seq+1}));setTicketTab("tasks");};
   const [activityTab,setActivityTab]=useState("comments");
   const [commentSearch,setCommentSearch]=useState(""),[commentAuthor,setCommentAuthor]=useState(""),[commentFrom,setCommentFrom]=useState(""),[commentTo,setCommentTo]=useState("");
   const activityEvents=project.events.filter(e=>activityTab==="comments"?e.eventType==="comentario":e.eventType!=="comentario");
@@ -1947,7 +1958,7 @@ function ProjectDetail({
   return (
     <>
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="process-dialog ticket-redesign">
+      <DialogContent className="process-dialog ticket-redesign ticket-workspace" data-ticket-tab={ticketTab}>
         <DialogHeader className="process-header">
           <DialogTitle className="sr-only">Processo {ticket(project.ticket)}</DialogTitle>
           <DialogDescription className="sr-only">Detalhes, prazos e histórico do processo.</DialogDescription>
@@ -1958,7 +1969,7 @@ function ProjectDetail({
             </div>
 
           </div>
-          <h2 className="ticket-hero-title">{project.name}</h2>
+          <div className="ticket-workspace-heading"><h2 className="ticket-hero-title">{project.name}</h2><div><button className="ticket-assign-trigger" onClick={()=>editDetails(project)}><Pencil/>Editar projeto</button>{currentStep&&<button className="primary" onClick={()=>edit(project)}><CheckCircle2/>{nextStep?"Avançar para próxima etapa":"Concluir projeto"}</button>}</div></div>
           <div className="ticket-hero-meta"><span><small>Projeto</small>{project.name}</span><span><small>Demanda</small>{project.demand}</span>{show("sei")&&<span><small>Nº do SEI</small>{project.sei||"Não informado"}</span>}{show("status")&&<span><small>Status do projeto</small><b className={"pill "+statusConfig[project.status].className}>{project.status}</b></span>}{show("priority")&&<div className="ticket-top-priority"><small>{label("priority", "Prioridade")}</small><button className="ticket-assign-trigger" aria-label="Editar prioridade" aria-expanded={quickEdit === "priority"} onClick={()=>{setQuickPriority(project.priority);setQuickSei(project.sei);setQuickOwnerId(project.ownerId);setQuickJustification("");setQuickError("");setQuickEdit("priority");}}>{project.priority}<Pencil/></button>{quickEdit === "priority" && renderQuickEditor()}</div>}{show("labels") && (
               <div className="header-label-control ticket-top-labels">
                 <button
@@ -2005,6 +2016,7 @@ function ProjectDetail({
             )}</div>
         </DialogHeader>
 
+        <nav className="ticket-workspace-tabs" aria-label="Seções do ticket">{[["overview","Visão geral"],["steps","Etapas"],["tasks","Tarefas"],["attachments","Anexos"],["comments","Comentários"],["history","Histórico"]].map(([key,title])=><button key={key} aria-pressed={ticketTab===key} onClick={()=>{setTicketTab(key);if(key==="comments"||key==="history")setActivityTab(key);}}>{title}</button>)}</nav>
         <div className="process-layout process-three-columns">
           <div className="ticket-summary-strip"><article><CalendarDays/><div><small>SLA da demanda</small><b>{formatSla(project.slaValue,project.slaUnit)}</b></div></article>{show("openedAt")&&<article><CalendarDays/><div><small>Data de abertura</small><b>{workflowDate(project.openedAt)}</b></div></article>}<article><CalendarDays/><div><small>Prazo previsto (etapa atual)</small><b>{workflowDate(currentStep?.dueAt)}</b></div></article><article className={currentStepLate?"late":""}><Clock3/><div><small>Situação da etapa</small><b>{stepSla.label}</b></div></article><div className="ticket-top-advance">{currentStep&&<button className="primary" onClick={()=>edit(project)}><CheckCircle2/>{nextStep?"Encaminhar para próxima etapa":"Concluir projeto"}</button>}{nextStep&&<small>Próxima etapa: {nextStep.stageName}<br/>Responsável: {nextStep.assignee||"Não definido"}</small>}</div></div>
           <section className="process-column process-ticket-column">
@@ -2021,6 +2033,7 @@ function ProjectDetail({
                 <span>{project.demand}</span>
               </article>
               {renderSection("info")}
+              {renderSection("stage")}
             </div>
 
           </section>
@@ -2028,10 +2041,10 @@ function ProjectDetail({
           <section className="process-column process-main process-sla-column">
             <section className="process-section process-stage-summary">
               <header>
-                <div><span className="division-number">2</span><div><b>Fluxo do projeto</b><small>Acompanhe o andamento e os responsáveis por cada etapa.</small></div></div><button className="ticket-assign-trigger" onClick={e=>e.currentTarget.closest(".process-layout")?.querySelector(".reference-sla")?.scrollIntoView({behavior:"smooth",block:"nearest"})}>Ver todas as etapas e prazos</button>
+                <div><span className="division-number">2</span><div><b>Fluxo do projeto</b><small>Acompanhe o andamento e os responsáveis por cada etapa.</small></div></div>{!["Concluído","Cancelado"].includes(project.status)&&<button className="ticket-assign-trigger" onClick={()=>requestTeam("step")}><Plus/>Adicionar etapa</button>}
               </header>
-              <TicketCollaboration projectId={project.id} ownerId={project.ownerId} owner={project.owner} closed={["Concluído","Cancelado"].includes(project.status)} members={members} team={project.team||[]} onChanged={refresh}/>
-              {renderSection("stage")}
+
+
               {(show("ownerId") || show("stage")) && <TicketFlow steps={project.workflow} showStages={show("stage")} showOwners={show("ownerId")} />}
             </section>
 
@@ -2107,6 +2120,10 @@ function ProjectDetail({
             </section>
           </section>
 
+          <aside className="ticket-workspace-team"><TicketCollaboration projectId={project.id} ownerId={project.ownerId} owner={project.owner} closed={["Concluído","Cancelado"].includes(project.status)} members={members} team={project.team||[]} onChanged={refresh} request={teamRequest}/></aside>
+          <section className="ticket-quick-actions"><h3>Ações rápidas</h3>{currentStep&&<button className="primary" onClick={()=>edit(project)}><CheckCircle2/>{nextStep?"Avançar para próxima etapa":"Concluir projeto"}</button>}{!["Concluído","Cancelado"].includes(project.status)&&<button onClick={()=>requestTeam("step")}><Plus/>Adicionar etapa</button>}<button onClick={()=>openTasks("",true)}><Plus/>Nova tarefa</button><button onClick={()=>{setTicketTab("attachments");}}><Paperclip/>Anexar documento</button><button onClick={()=>requestTeam("team")}><Users/>Gerenciar equipe</button></section>
+          {ticketTab==="overview"&&<TicketTaskPreview projectId={project.id} members={members} onOpen={id=>openTasks(id)} onAll={()=>openTasks()}/>}
+          {ticketTab==="tasks"&&<section className="ticket-tasks-panel"><TasksBoard key={project.id+"-"+taskSession.seq} areaId={project.areaId} userId={userId} projects={[project]} members={members} ticketId={project.id} initialTaskId={taskSession.id} createOnOpen={taskSession.create}/></section>}
           <aside className="process-activity">
             <header>
               <div><span className="division-number">3</span><MessageCircle /><b>Atividade</b></div>
