@@ -2018,10 +2018,10 @@ function ProjectDetail({
 
         <nav className="ticket-workspace-tabs" aria-label="Seções do ticket">{[["overview","Visão geral"],["steps","Etapas"],["tasks","Tarefas"],["attachments","Anexos"],["comments","Comentários"],["history","Histórico"]].map(([key,title])=><button key={key} aria-pressed={ticketTab===key} onClick={()=>{setTicketTab(key);if(key==="comments"||key==="history")setActivityTab(key);}}>{title}</button>)}</nav>
         <div className="process-layout process-three-columns">
-          <div className="ticket-summary-strip"><article><CalendarDays/><div><small>SLA da demanda</small><b>{formatSla(project.slaValue,project.slaUnit)}</b></div></article>{show("openedAt")&&<article><CalendarDays/><div><small>Data de abertura</small><b>{workflowDate(project.openedAt)}</b></div></article>}<article><CalendarDays/><div><small>Prazo previsto (etapa atual)</small><b>{workflowDate(currentStep?.dueAt)}</b></div></article><article className={currentStepLate?"late":""}><Clock3/><div><small>Situação da etapa</small><b>{stepSla.label}</b></div></article><div className="ticket-top-advance">{currentStep&&<button className="primary" onClick={()=>edit(project)}><CheckCircle2/>{nextStep?"Encaminhar para próxima etapa":"Concluir projeto"}</button>}{nextStep&&<small>Próxima etapa: {nextStep.stageName}<br/>Responsável: {nextStep.assignee||"Não definido"}</small>}</div></div>
+          <div className="ticket-summary-strip"><article><CalendarDays/><div><small>SLA da demanda</small><b>{formatSla(project.slaValue,project.slaUnit)}</b></div></article>{show("openedAt")&&<article><CalendarDays/><div><small>Data de abertura</small><b>{workflowDate(project.openedAt)}</b></div></article>}<article><CalendarDays/><div><small>Prazo previsto (etapa atual)</small><b>{workflowDate(currentStep?.dueAt)}</b></div></article><article className={currentStepLate?"late":""}><Clock3/><div><small>Tempo restante</small><b>{stepSla.label}</b></div></article><div className="ticket-top-advance">{currentStep&&<button className="primary" onClick={()=>edit(project)}><CheckCircle2/>{nextStep?"Encaminhar para próxima etapa":"Concluir projeto"}</button>}{nextStep&&<small>Próxima etapa: {nextStep.stageName}<br/>Responsável: {nextStep.assignee||"Não definido"}</small>}</div></div>
           <section className="process-column process-ticket-column">
             <header className="process-column-title">
-              <div><span>1</span><div><b>Informações do ticket</b><small>Dados preenchidos na abertura</small></div></div>
+              <div><span>1</span><div><b>Informações do projeto</b></div></div><button className="ticket-assign-trigger" onClick={()=>editDetails(project)}><Pencil/>Editar</button>
             </header>
             <div className="ticket-primary-fields">
               <article>
@@ -2033,7 +2033,7 @@ function ProjectDetail({
                 <span>{project.demand}</span>
               </article>
               {renderSection("info")}
-              {renderSection("stage")}
+              {renderSection("stage")}<article><b>SLA da demanda</b><span>{formatSla(project.slaValue,project.slaUnit)}</span></article><article><b>Prazo previsto (etapa atual)</b><span>{workflowDate(currentStep?.dueAt)}</span></article><article><b>Situação do prazo</b><span className={currentStepLate?"ticket-deadline-late":""}>{stepSla.label}</span></article>
             </div>
 
           </section>
@@ -2070,7 +2070,7 @@ function ProjectDetail({
 
             <section className="process-section attachments-section">
               <div className="section-title-row">
-                <div><h3>Anexos</h3><p>Arquivos privados deste ticket.</p></div>
+                <div><h3>Anexos do projeto</h3></div>{ticketTab==="overview"&&<button className="ticket-view-all" onClick={()=>setTicketTab("attachments")}>Ver todos</button>}
                 <label className={`attachment-upload ${attachmentBusy === "upload" ? "busy" : ""}`}>
                   {attachmentBusy === "upload" ? <Loader2 /> : <Upload />} Adicionar anexo
                   <input
@@ -2092,11 +2092,11 @@ function ProjectDetail({
               </div>
               {quickError && !quickEdit && <small className="quick-edit-error">{quickError}</small>}
               {project.attachments.length ? (
-                <div className="attachment-list">
+                <div className="attachment-list"><div className="ticket-attachment-columns"><span>Nome</span><span>Data de inclusão</span><span>Tamanho</span><span>Ações</span></div>
                   {project.attachments.map((attachment) => (
                     <article key={attachment.id}>
                       <FileText />
-                      <div><b>{attachment.fileName}</b><small>{formatBytes(attachment.sizeBytes)} · {attachment.uploader} · {new Date(attachment.createdAt).toLocaleDateString("pt-BR")}</small></div>
+                      <div><b>{attachment.fileName}</b></div><time>{new Date(attachment.createdAt).toLocaleDateString("pt-BR")}</time><small className="ticket-file-size">{formatBytes(attachment.sizeBytes)}</small>
                       <button title="Baixar anexo" disabled={!!attachmentBusy} onClick={async () => {
                         setAttachmentBusy(attachment.id);
                         try { await downloadAttachment(attachment); }
