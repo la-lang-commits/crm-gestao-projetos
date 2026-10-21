@@ -3,6 +3,9 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
+  ChevronDown,
+  Hourglass,
+  Play,
   CircleHelp,
   Bell,
   Building2,
@@ -1128,6 +1131,7 @@ function Workspace({ user }: { user: any }) {
       {detailProject && (
         <ProjectDetail
           project={detailProject}
+          areaName={current?.name||""}
           fields={areaFields}
           members={areaMembers}
           open={!!detailProject}
@@ -1745,6 +1749,7 @@ function TicketCards({
 }
 
 type ProjectDetailProps = {
+  areaName?:string;
   userId:string;
   editDetails:(project:Project)=>void;
   project: Project;
@@ -1782,6 +1787,7 @@ type ProjectDetailProps = {
 };
 
 function ProjectDetail({
+  areaName="",
   userId,
   editDetails,
   project,
@@ -1969,17 +1975,17 @@ function ProjectDetail({
             </div>
 
           </div>
-          <div className="ticket-workspace-heading"><h2 className="ticket-hero-title">{project.name}</h2><div><button className="ticket-assign-trigger" onClick={()=>editDetails(project)}><Pencil/>Editar projeto</button>{currentStep&&<button className="primary" onClick={()=>edit(project)}><CheckCircle2/>{nextStep?"Avançar para próxima etapa":"Concluir projeto"}</button>}</div></div>
-          <div className="ticket-hero-meta"><span><small>Projeto</small>{project.name}</span><span><small>Demanda</small>{project.demand}</span>{show("sei")&&<span><small>Nº do SEI</small>{project.sei||"Não informado"}</span>}{show("status")&&<span><small>Status do projeto</small><b className={"pill "+statusConfig[project.status].className}>{project.status}</b></span>}{show("priority")&&<div className="ticket-top-priority"><small>{label("priority", "Prioridade")}</small><button className="ticket-assign-trigger" aria-label="Editar prioridade" aria-expanded={quickEdit === "priority"} onClick={()=>{setQuickPriority(project.priority);setQuickSei(project.sei);setQuickOwnerId(project.ownerId);setQuickJustification("");setQuickError("");setQuickEdit("priority");}}>{project.priority}<Pencil/></button>{quickEdit === "priority" && renderQuickEditor()}</div>}{show("labels") && (
+          <div className="ticket-workspace-heading"><h2 className="ticket-hero-title">{project.name}</h2><div><button className="ticket-assign-trigger" onClick={()=>editDetails(project)}><Pencil/>Editar projeto</button>{currentStep&&<button className="primary" onClick={()=>edit(project)}><Play/>{nextStep?"Avançar para próxima etapa":"Concluir projeto"}</button>}</div></div>
+          <div className="ticket-hero-meta"><span className="reference-meta-item"><FolderKanban/><span><small>Projeto</small>{project.name}</span></span><span className="reference-meta-item"><CalendarDays/><span><small>Demanda</small>{project.demand}</span></span>{show("sei")&&<span className="reference-meta-item"><FileText/><span><small>Nº do SEI</small>{project.sei||"Não informado"}</span><button aria-label="Editar SEI" onClick={()=>{setQuickSei(project.sei);setQuickJustification("");setQuickError("");setQuickEdit("sei");}}><Pencil/></button>{quickEdit==="sei"&&<div className="reference-sei-editor"><input aria-label="Número do SEI" value={quickSei} onChange={e=>setQuickSei(e.target.value)}/><button disabled={quickBusy} onClick={()=>void saveQuickEdit()}>Salvar</button><button onClick={()=>setQuickEdit(null)}>Cancelar</button>{quickError&&<small role="alert">{quickError}</small>}</div>}</span>}{show("status")&&<span><small>Status do projeto</small><button className="reference-status" onClick={()=>{setQuickStatus(project.status);setQuickJustification("");setQuickError("");setQuickEdit("status");}}><CircleDot/>{project.status}<ChevronDown/></button>{quickEdit==="status"&&renderQuickEditor()}</span>}{show("priority")&&<div className="ticket-top-priority"><small>{label("priority", "Prioridade")}</small><button className="ticket-assign-trigger" aria-label="Editar prioridade" aria-expanded={quickEdit === "priority"} onClick={()=>{setQuickPriority(project.priority);setQuickSei(project.sei);setQuickOwnerId(project.ownerId);setQuickJustification("");setQuickError("");setQuickEdit("priority");}}>{project.priority}<ChevronDown/></button>{quickEdit === "priority" && renderQuickEditor()}</div>}{show("labels") && (
               <div className="header-label-control ticket-top-labels">
                 <button
                   className="header-label-trigger"
                   onClick={() => setLabelProject(labelProject === project.id ? "" : project.id)}
                   aria-expanded={labelProject === project.id}
                 >
-                  <Tag /> {label("labels", "Etiquetas")}
+                  {label("labels", "Etiquetas")}
                 </button>
-                <div className="ticket-top-label-chips">{project.labels.map(item => <em key={item.id}>{item.label_text}</em>)}</div>
+                <div className="ticket-top-label-chips">{project.labels.map(item => <em key={item.id}>{item.label_text}</em>)}<button className="reference-label-add" aria-label="Adicionar etiqueta" onClick={()=>setLabelProject(labelProject===project.id?"":project.id)}><Plus/></button></div>
                 {labelProject === project.id && (
                   <div className="header-label-popover">
                     <b>Etiquetas do ticket</b>
@@ -2018,24 +2024,21 @@ function ProjectDetail({
 
         <nav className="ticket-workspace-tabs" aria-label="Seções do ticket">{[["overview","Visão geral"],["steps","Etapas"],["tasks","Tarefas"],["attachments","Anexos"],["comments","Comentários"],["history","Histórico"]].map(([key,title])=><button key={key} aria-pressed={ticketTab===key} onClick={()=>{setTicketTab(key);if(key==="comments"||key==="history")setActivityTab(key);}}>{title}</button>)}</nav>
         <div className="process-layout process-three-columns">
-          <div className="ticket-summary-strip"><article><CalendarDays/><div><small>SLA da demanda</small><b>{formatSla(project.slaValue,project.slaUnit)}</b></div></article>{show("openedAt")&&<article><CalendarDays/><div><small>Data de abertura</small><b>{workflowDate(project.openedAt)}</b></div></article>}<article><CalendarDays/><div><small>Prazo previsto (etapa atual)</small><b>{workflowDate(currentStep?.dueAt)}</b></div></article><article className={currentStepLate?"late":""}><Clock3/><div><small>Tempo restante</small><b>{stepSla.label}</b></div></article><div className="ticket-top-advance">{currentStep&&<button className="primary" onClick={()=>edit(project)}><CheckCircle2/>{nextStep?"Encaminhar para próxima etapa":"Concluir projeto"}</button>}{nextStep&&<small>Próxima etapa: {nextStep.stageName}<br/>Responsável: {nextStep.assignee||"Não definido"}</small>}</div></div>
+          <div className="ticket-summary-strip"><article><Clock3/><div><small>SLA da demanda</small><b>{formatSla(project.slaValue,project.slaUnit)}</b></div></article>{show("openedAt")&&<article><CalendarDays/><div><small>Data de abertura</small><b>{workflowDate(project.openedAt)}</b></div></article>}<article><CalendarDays/><div><small>Prazo previsto (etapa atual)</small><b>{workflowDate(currentStep?.dueAt)}</b></div></article><article className={currentStepLate?"late":""}><Hourglass/><div><small>Tempo restante</small><b>{stepSla.label}</b></div></article><div className="ticket-top-advance">{currentStep&&<button className="primary" onClick={()=>edit(project)}><CheckCircle2/>{nextStep?"Encaminhar para próxima etapa":"Concluir projeto"}</button>}{nextStep&&<small>Próxima etapa: {nextStep.stageName}<br/>Responsável: {nextStep.assignee||"Não definido"}</small>}</div></div>
           <section className="process-column process-ticket-column">
-            <header className="process-column-title">
-              <div><span>1</span><div><b>Informações do projeto</b></div></div><button className="ticket-assign-trigger" onClick={()=>editDetails(project)}><Pencil/>Editar</button>
-            </header>
-            <div className="ticket-primary-fields">
-              <article>
-                <b>Nome do projeto</b>
-                <span>{project.name}</span>
-              </article>
-              <article>
-                <b>Demanda</b>
-                <span>{project.demand}</span>
-              </article>
-              {renderSection("info")}
-              {renderSection("stage")}<article><b>SLA da demanda</b><span>{formatSla(project.slaValue,project.slaUnit)}</span></article><article><b>Prazo previsto (etapa atual)</b><span>{workflowDate(currentStep?.dueAt)}</span></article><article><b>Situação do prazo</b><span className={currentStepLate?"ticket-deadline-late":""}>{stepSla.label}</span></article>
-            </div>
-
+            <header className="reference-info-heading"><h3>Informações do projeto</h3><button className="ticket-assign-trigger" onClick={()=>editDetails(project)}><Pencil/>Editar</button></header>
+            <div className="reference-info-grid"><div>
+              <article><small>Demanda</small><span>{project.demand}</span></article>
+              <article><small>Área</small><span>{areaName||"—"}</span></article>
+              {show("openedAt")&&<article><small>Data de abertura</small><span>{workflowDate(project.openedAt)}</span></article>}
+              <article><small>Prazo previsto (etapa atual)</small><span>{workflowDate(currentStep?.dueAt)}</span></article>
+            </div><div>
+              <article><small>SLA da demanda</small><span>{formatSla(project.slaValue,project.slaUnit)}</span></article>
+              <article><small>Situação do prazo</small><span className={currentStepLate?"ticket-deadline-late":""}>{stepSla.label}</span></article>
+              {show("priority")&&<article><small>Prioridade</small><button className="reference-priority" onClick={()=>{setQuickPriority(project.priority);setQuickJustification("");setQuickError("");setQuickEdit("priority");}}>{project.priority}</button></article>}
+              {show("labels")&&<article><small>Etiquetas</small><div className="reference-labels">{project.labels.map(t=><span key={t.id}>{t.label_text}</span>)}<button aria-label="Gerenciar etiquetas" onClick={()=>setLabelProject(labelProject===project.id?"":project.id)}><Plus/></button></div></article>}
+            </div></div>
+            {custom.filter(item=>fieldSection(item.field)!=="history").length>0&&<div className="reference-custom-fields">{custom.filter(item=>fieldSection(item.field)!=="history").map(item=><article key={item.field.id}><small>{item.field.label}</small><span>{item.value||"—"}</span></article>)}</div>}
           </section>
 
           <section className="process-column process-main process-sla-column">
@@ -2092,11 +2095,11 @@ function ProjectDetail({
               </div>
               {quickError && !quickEdit && <small className="quick-edit-error">{quickError}</small>}
               {project.attachments.length ? (
-                <div className="attachment-list"><div className="ticket-attachment-columns"><span>Nome</span><span>Data de inclusão</span><span>Tamanho</span><span>Ações</span></div>
+                <div className="reference-attachment-scroll"><table className="reference-attachment-table"><thead><tr><th>Nome</th><th>Data de inclusão</th><th>Tamanho</th><th>Ações</th></tr></thead><tbody>
                   {project.attachments.map((attachment) => (
-                    <article key={attachment.id}>
+                    <tr key={attachment.id}><td><span className="reference-file-name">
                       <FileText />
-                      <div><b>{attachment.fileName}</b></div><time>{new Date(attachment.createdAt).toLocaleDateString("pt-BR")}</time><small className="ticket-file-size">{formatBytes(attachment.sizeBytes)}</small>
+                      <b>{attachment.fileName}</b></span></td><td><time>{new Date(attachment.createdAt).toLocaleDateString("pt-BR")}</time></td><td><small className="ticket-file-size">{formatBytes(attachment.sizeBytes)}</small></td><td><div className="reference-file-actions">
                       <button title="Baixar anexo" disabled={!!attachmentBusy} onClick={async () => {
                         setAttachmentBusy(attachment.id);
                         try { await downloadAttachment(attachment); }
@@ -2111,17 +2114,17 @@ function ProjectDetail({
                           finally { setAttachmentBusy(""); }
                         }}><Trash2 /></button>
                       )}
-                    </article>
+                    </div></td></tr>
                   ))}
-                </div>
+                </tbody></table></div>
               ) : (
                 <div className="attachment-empty"><Paperclip /><span>Nenhum anexo incluído.</span></div>
               )}
             </section>
           </section>
 
-          <aside className="ticket-workspace-team"><TicketCollaboration projectId={project.id} ownerId={project.ownerId} owner={project.owner} closed={["Concluído","Cancelado"].includes(project.status)} members={members} team={project.team||[]} onChanged={refresh} request={teamRequest}/></aside>
-          <section className="ticket-quick-actions"><h3>Ações rápidas</h3>{currentStep&&<button className="primary" onClick={()=>edit(project)}><CheckCircle2/>{nextStep?"Avançar para próxima etapa":"Concluir projeto"}</button>}{!["Concluído","Cancelado"].includes(project.status)&&<button onClick={()=>requestTeam("step")}><Plus/>Adicionar etapa</button>}<button onClick={()=>openTasks("",true)}><Plus/>Nova tarefa</button><button onClick={()=>{setTicketTab("attachments");}}><Paperclip/>Anexar documento</button><button onClick={()=>requestTeam("team")}><Users/>Gerenciar equipe</button></section>
+          <aside className="ticket-workspace-team"><TicketCollaboration projectId={project.id} ownerId={project.ownerId} owner={project.owner} closed={["Concluído","Cancelado"].includes(project.status)} members={members} team={project.team||[]} onChanged={refresh} request={teamRequest} areaName={areaName} onAssign={()=>{setAssignee(project.ownerId);setAssignReason("");setAssignError("");setAssigning(true);}}/></aside>
+          <section className="ticket-quick-actions"><h3>Ações rápidas</h3>{currentStep&&<button className="primary" onClick={()=>edit(project)}><Play/>{nextStep?"Avançar para próxima etapa":"Concluir projeto"}</button>}{!["Concluído","Cancelado"].includes(project.status)&&<button onClick={()=>requestTeam("step")}><Plus/>Adicionar etapa</button>}<button onClick={()=>openTasks("",true)}><Plus/>Nova tarefa</button><button onClick={()=>{setTicketTab("attachments");}}><Paperclip/>Anexar documento</button><button onClick={()=>requestTeam("team")}><Users/>Gerenciar equipe</button></section>
           {ticketTab==="overview"&&<TicketTaskPreview projectId={project.id} members={members} onOpen={id=>openTasks(id)} onAll={()=>openTasks()}/>}
           {ticketTab==="tasks"&&<section className="ticket-tasks-panel"><TasksBoard key={project.id+"-"+taskSession.seq} areaId={project.areaId} userId={userId} projects={[project]} members={members} ticketId={project.id} initialTaskId={taskSession.id} createOnOpen={taskSession.create}/></section>}
           <aside className="process-activity">
@@ -4372,3 +4375,4 @@ function EditProject({
     </Dialog>
   );
 }
+
