@@ -62,6 +62,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { OverviewDashboard } from "@/components/overview-dashboard";
 import {MyActions} from "@/components/my-actions";
+import {TicketHome} from "@/components/ticket-home";
 import {TicketTaskPreview} from "@/components/ticket-task-preview";
 import "@/components/ticket-workspace.css";
 import {TicketCollaboration,type TicketCollaborator} from "@/components/ticket-collaboration";
@@ -1835,6 +1836,7 @@ function ProjectDetail({
   const shownEvents=activityTab==="history"?activityEvents:activityEvents.filter(e=>(!commentSearch||e.justification.toLocaleLowerCase("pt-BR").includes(commentSearch.toLocaleLowerCase("pt-BR")))&&(!commentAuthor||e.actorUserId===commentAuthor)&&(!commentFrom||new Date(e.created_at)>=new Date(commentFrom+"T00:00:00"))&&(!commentTo||new Date(e.created_at)<=new Date(commentTo+"T23:59:59.999")));
 
   const [assigning,setAssigning]=useState(false);
+  const [assignmentMode,setAssignmentMode]=useState<"assign"|"return">("assign");
   const [assignee,setAssignee]=useState(project.ownerId);
   const [assignReason,setAssignReason]=useState("");
   const [assignError,setAssignError]=useState("");
@@ -1956,7 +1958,7 @@ function ProjectDetail({
                 <div><b>{label("openedAt", "Data de abertura")}</b><span>{new Date(project.openedAt + "T12:00:00").toLocaleDateString("pt-BR")}</span></div>
               )}
 
-      {fields.filter(f => f.visible && fieldSection(f) === section && ["stage", "ownerId"].includes(f.key)).map(f => <article key={f.id}><b>{f.label}</b><span>{f.key === "stage" ? (currentStep?.stageName || project.stage || "—") : project.owner || "Não informado"}</span>{f.key === "ownerId" && !["Concluído","Cancelado"].includes(project.status) && <button className="ticket-assign-trigger" onClick={()=>{setAssignee(project.ownerId);setAssignReason("");setAssignError("");setAssigning(true);}}><Users/>Atribuir</button>}</article>)}
+      {fields.filter(f => f.visible && fieldSection(f) === section && ["stage", "ownerId"].includes(f.key)).map(f => <article key={f.id}><b>{f.label}</b><span>{f.key === "stage" ? (currentStep?.stageName || project.stage || "—") : project.owner || "Não informado"}</span>{f.key === "ownerId" && !["Concluído","Cancelado"].includes(project.status) && <button className="ticket-assign-trigger" onClick={()=>{setAssignmentMode("assign");setAssignee(project.ownerId);setAssignReason("");setAssignError("");setAssigning(true);}}><Users/>Atribuir</button>}</article>)}
       {custom.filter(item => fieldSection(item.field) === section).map(item => <article key={item.field.id}><b>{item.field.label}</b><span>{item.value || "—"}</span></article>)}
     </div>;
   }
@@ -1964,7 +1966,7 @@ function ProjectDetail({
   return (
     <>
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="process-dialog ticket-redesign ticket-workspace" data-ticket-tab={ticketTab}>
+      <DialogContent className="process-dialog ticket-redesign ticket-workspace ticket-fresh" data-ticket-tab={ticketTab}>
         <DialogHeader className="process-header">
           <DialogTitle className="sr-only">Processo {ticket(project.ticket)}</DialogTitle>
           <DialogDescription className="sr-only">Detalhes, prazos e histórico do processo.</DialogDescription>
@@ -2024,6 +2026,8 @@ function ProjectDetail({
 
         <nav className="ticket-workspace-tabs" aria-label="Seções do ticket">{[["overview","Visão geral"],["steps","Etapas"],["tasks","Tarefas"],["attachments","Anexos"],["comments","Comentários"],["history","Histórico"]].map(([key,title])=><button key={key} aria-pressed={ticketTab===key} onClick={()=>{setTicketTab(key);if(key==="comments"||key==="history")setActivityTab(key);}}>{title}</button>)}</nav>
         <div className="process-layout process-three-columns">
+          {ticketTab==="overview"&&<TicketHome name={project.name} demand={project.demand} area={areaName} owner={project.owner} status={project.status} sei={project.sei} opened={show("openedAt")?workflowDate(project.openedAt):"—"} deadline={workflowDate(currentStep?.dueAt)} sla={formatSla(project.slaValue,project.slaUnit)} deadlineLabel={stepSla.label} late={currentStepLate} steps={project.workflow} team={project.team||[]} attachments={project.attachments.length} custom={custom.map(c=>({label:c.field.label,value:c.value}))} events={[...project.events].sort((a,b)=>Date.parse(b.created_at)-Date.parse(a.created_at)).map(e=>({id:e.id,title:eventTitle(e),text:e.justification,author:e.actor?.full_name||"Usuário",date:e.created_at}))} onAdvance={()=>edit(project)} onAssign={()=>{setAssignmentMode("assign");setAssignee("");setAssignReason("");setAssignError("");setAssigning(true);}} onReturn={()=>{setAssignmentMode("return");setAssignee("");setAssignReason("");setAssignError("");setAssigning(true);}} onAddStep={()=>requestTeam("step")} onTeam={()=>requestTeam("team")} onNewTask={()=>openTasks("",true)} onTab={tab=>{setTicketTab(tab);if(tab==="comments"||tab==="history")setActivityTab(tab);}}/>}
+
           <div className="ticket-summary-strip"><article><Clock3/><div><small>SLA da demanda</small><b>{formatSla(project.slaValue,project.slaUnit)}</b></div></article>{show("openedAt")&&<article><CalendarDays/><div><small>Data de abertura</small><b>{workflowDate(project.openedAt)}</b></div></article>}<article><CalendarDays/><div><small>Prazo previsto (etapa atual)</small><b>{workflowDate(currentStep?.dueAt)}</b></div></article><article className={currentStepLate?"late":""}><Hourglass/><div><small>Tempo restante</small><b>{stepSla.label}</b></div></article><div className="ticket-top-advance">{currentStep&&<button className="primary" onClick={()=>edit(project)}><CheckCircle2/>{nextStep?"Encaminhar para próxima etapa":"Concluir projeto"}</button>}{nextStep&&<small>Próxima etapa: {nextStep.stageName}<br/>Responsável: {nextStep.assignee||"Não definido"}</small>}</div></div>
           <section className="process-column process-ticket-column">
             <header className="reference-info-heading"><h3>Informações do projeto</h3><button className="ticket-assign-trigger" onClick={()=>editDetails(project)}><Pencil/>Editar</button></header>
@@ -2187,7 +2191,7 @@ function ProjectDetail({
         </div>
       </DialogContent>
     </Dialog>
-    <Dialog open={assigning} onOpenChange={value=>{if(!assignBusy)setAssigning(value);}}><DialogContent className="ticket-assign-dialog"><DialogHeader><DialogTitle>Atribuir responsável</DialogTitle><DialogDescription>Transfira a responsabilidade atual para alguém desta área. A etapa e os prazos serão mantidos.</DialogDescription></DialogHeader><label>Responsável<select value={assignee} onChange={e=>setAssignee(e.target.value)}><option value="">Selecione uma pessoa</option>{members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></label><label>Motivo<textarea value={assignReason} onChange={e=>setAssignReason(e.target.value)} maxLength={2000} placeholder="Ex.: cobertura durante minhas férias"/></label>{assignError&&<p role="alert">{assignError}</p>}<button className="primary" disabled={assignBusy||!assignee||assignee===project.ownerId||assignReason.trim().length<3} onClick={async()=>{setAssignBusy(true);setAssignError("");try{await assign(assignee,assignReason.trim());setAssigning(false);}catch(e){setAssignError(e instanceof Error?e.message:"Não foi possível atribuir.");}finally{setAssignBusy(false);}}}>{assignBusy?"Salvando...":"Confirmar atribuição"}</button></DialogContent></Dialog>
+    <Dialog open={assigning} onOpenChange={value=>{if(!assignBusy)setAssigning(value);}}><DialogContent className="ticket-assign-dialog"><DialogHeader><DialogTitle>{assignmentMode==="return"?"Devolver atividade":"Atribuir atividade"}</DialogTitle><DialogDescription>{assignmentMode==="return"?"Escolha quem deve receber a atividade de volta e explique o motivo. O registro ficará na linha do tempo. A etapa e os prazos continuam os mesmos.":"Escolha uma pessoa da equipe para assumir esta atividade. A etapa e os prazos continuam os mesmos."}</DialogDescription></DialogHeader><label>Responsável<select value={assignee} onChange={e=>setAssignee(e.target.value)}><option value="">Selecione uma pessoa</option>{members.map(m=><option key={m.id} value={m.id}>{m.name}</option>)}</select></label><label>Motivo<textarea value={assignReason} onChange={e=>setAssignReason(e.target.value)} maxLength={2000} placeholder="Ex.: cobertura durante minhas férias"/></label>{assignError&&<p role="alert">{assignError}</p>}<button className="primary" disabled={assignBusy||!assignee||assignee===project.ownerId||assignReason.trim().length<3} onClick={async()=>{setAssignBusy(true);setAssignError("");try{await assign(assignee,(assignmentMode==="return"?"Atividade devolvida: ":"")+assignReason.trim());setAssigning(false);}catch(e){setAssignError(e instanceof Error?e.message:"Não foi possível atribuir.");}finally{setAssignBusy(false);}}}>{assignBusy?"Salvando...":assignmentMode==="return"?"Devolver para esta pessoa":"Confirmar atribuição"}</button></DialogContent></Dialog>
     <AlertDialog
       open={!!commentToDelete}
       onOpenChange={(dialogOpen) => {
