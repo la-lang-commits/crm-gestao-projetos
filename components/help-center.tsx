@@ -18,7 +18,7 @@ const sections=[
  ['O que é a carga por responsável?','As barras somam os tickets e as tarefas atribuídos a cada pessoa. As cores distinguem demandas e tarefas. Uma demanda é contada pelo responsável atual, sem somar todos os responsáveis que já passaram por ela. Sem responsável reúne atividades ainda sem atribuição.']
  ]},
  {name:'Minhas ações',view:'Minhas ações',items:[
- ['O que encontro em Minhas ações?','Tickets em aberto sob sua responsabilidade, incluindo os que têm você como responsável adicional, suas etapas atuais ou futuras e suas tarefas pendentes. Os itens respeitam a área selecionada. Clique em um item para abri-lo. Participar de um ticket não significa ser responsável por ele.']
+ ['O que encontro em Minhas ações?','Tickets em aberto sob sua responsabilidade, incluindo os que têm você como responsável adicional, suas etapas atuais ou futuras e suas tarefas pendentes. Os itens respeitam a área selecionada. Use os indicadores Todas as pendências, Atrasadas, Para hoje e Aguardando, ou filtre por tipo, projeto e prazo. Abra a atividade pelos botões Abrir ticket e Abrir tarefa. A etapa atual substitui o ticket na lista para evitar repetição; etapas futuras ficam em Aguardando. Participar de um ticket não significa ser responsável por ele.']
  ]},
  {name:'Projetos e tickets',view:'Projetos',items:[
  ['Como adicionar uma etapa a um ticket aberto?','No Fluxo do projeto, clique em Adicionar etapa, preencha o nome, responsável e prazo. A etapa entra no fim da sequência deste ticket, sem alterar o modelo do catálogo nem os prazos existentes. Se não houver etapa ativa ou pendente, a nova etapa começa imediatamente.'],
